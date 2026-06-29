@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Staedtler Scorecard Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root {
+    --staedtler-blue: #003DA5;
+    --staedtler-mid: #1a52b8;
+    --staedtler-light: #e8eef8;
+    --staedtler-accent: #ffffff;
+    --text-primary: #0d1b3e;
+    --text-secondary: #4a5568;
+    --text-muted: #8a9ab8;
+    --border: #d1daea;
+    --success: #1a7f4e;
+    --success-bg: #e8f5ee;
+    --warn: #b45309;
+    --warn-bg: #fef3cd;
+    --danger: #c0392b;
+    --danger-bg: #fdecea;
+    --card-bg: #ffffff;
+    --page-bg: #f0f4fc;
+    --header-height: 64px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--page-bg);
+    color: var(--text-primary);
+    min-height: 100vh;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: var(--staedtler-blue);
+    height: var(--header-height);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,61,165,0.25);
+  }
+
+  .header-logo {
+    height: 36px;
+    width: auto;
+    filter: brightness(0) invert(1);
+  }
+
+  .header-divider {
+    width: 1px;
+    height: 28px;
+    background: rgba(255,255,255,0.3);
+  }
+
+  .header-title {
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .header-subtitle {
+    color: rgba(255,255,255,0.65);
+    font-size: 12px;
+    margin-top: 1px;
+  }
+
+  .header-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  #last-updated {
+    color: rgba(255,255,255,0.6);
+    font-size: 11px;
+  }
+
+  #refresh-btn {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: #fff;
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  #refresh-btn:hover { background: rgba(255,255,255,0.25); }
+
+  /* ── AUTH OVERLAY ── */
+  #auth-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,61,165,0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .auth-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 40px 48px;
+    text-align: center;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 24px 48px rgba(0,0,0,0.3);
+  }
+
+  .auth-card img {
+    height: 48px;
+    margin-bottom: 20px;
+  }
+
+  .auth-card h2 {
+    font-size: 20px;
+    color: var(--staedtler-blue);
+    margin-bottom: 8px;
+  }
+
+  .auth-card p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 24px;
+    line-height: 1.5;
+  }
+
+  #sign-in-btn {
+    background: var(--staedtler-blue);
+    color: #fff;
+    border: none;
+    padding: 12px 32px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.15s;
+  }
+  #sign-in-btn:hover { background: var(--staedtler-mid); }
+
+  #auth-error {
+    margin-top: 12px;
+    color: var(--danger);
+    font-size: 12px;
+    display: none;
+  }
+
+  /* ── LOADING ── */
+  #loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(240,244,252,0.92);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+    z-index: 500;
+  }
+
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border);
+    border-top-color: var(--staedtler-blue);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #loading-msg { color: var(--text-secondary); font-size: 14px; }
+
+  /* ── FILTERS ── */
+  .filter-bar {
+    background: #fff;
+    border-bottom: 1px solid var(--border);
+    padding: 10px 24px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .filter-bar label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+
+  .filter-bar select {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 13px;
+    color: var(--text-primary);
+    background: #fff;
+    cursor: pointer;
+    min-width: 130px;
+  }
+
+  /* ── TABS ── */
+  .tabs {
+    background: var(--staedtler-blue);
+    padding: 0 24px;
+    display: flex;
+    gap: 2px;
+  }
+
+  .tab-btn {
+    padding: 12px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.65);
+    background: none;
+    border: none;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+  .tab-btn:hover { color: rgba(255,255,255,0.9); }
+  .tab-btn.active {
+    color: #fff;
+    border-bottom-color: #fff;
+  }
+
+  /* ── MAIN ── */
+  main {
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── KPI STRIP ── */
+  .kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .kpi-card {
+    background: var(--card-bg);
+    border-radius: 10px;
+    padding: 16px 18px;
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--staedtler-blue);
+  }
+
+  .kpi-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+
+  .kpi-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--staedtler-blue);
+    line-height: 1;
+  }
+
+  .kpi-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  /* ── GRID ── */
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  @media (max-width: 900px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  }
+
+  /* ── CARD ── */
+  .card {
+    background: var(--card-bg);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .card-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .card-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .card-body {
+    padding: 16px 18px;
+  }
+
+  /* ── TABLE ── */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .data-table th {
+    text-align: left;
+    padding: 8px 10px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--border);
+    background: #f8faff;
+    white-space: nowrap;
+  }
+
+  .data-table td {
+    padding: 9px 10px;
+    border-bottom: 1px solid #f0f4fc;
+    color: var(--text-primary);
+    vertical-align: middle;
+  }
+
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: #f8faff; }
+
+  .data-table td.num {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    font-weight: 600;
+  }
+
+  /* ── SCORE BADGES ── */
+  .score-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .score-high { background: var(--success-bg); color: var(--success); }
+  .score-mid  { background: var(--warn-bg);    color: var(--warn); }
+  .score-low  { background: var(--danger-bg);  color: var(--danger); }
+
+  /* ── PROGRESS BAR ── */
+  .progress-wrap { display: flex; align-items: center; gap: 8px; }
+  .progress-bar-bg {
+    flex: 1;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--staedtler-blue);
+    transition: width 0.4s ease;
+  }
+  .progress-pct { font-size: 11px; font-weight: 700; min-width: 34px; text-align: right; color: var(--text-secondary); }
+
+  /* ── CHART CONTAINER ── */
+  .chart-wrap {
+    position: relative;
+    height: 240px;
+  }
+
+  .chart-wrap-tall {
+    position: relative;
+    height: 320px;
+  }
+
+  /* ── BANNER TAG ── */
+  .banner-tag {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    background: var(--staedtler-light);
+    color: var(--staedtler-blue);
+  }
+
+  /* ── EMPTY STATE ── */
+  .empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  /* ── MONTH PILL ── */
+  .month-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    background: var(--staedtler-light);
+    color: var(--staedtler-blue);
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<!-- AUTH OVERLAY -->
+<div id="auth-overlay">
+  <div class="auth-card">
+    <img src="https://cpillay2404.github.io/staedtler-scorecard-dashboard/Staedtler.png" 
+         onerror="this.style.display='none'" alt="Staedtler">
+    <h2>Scorecard Dashboard</h2>
+    <p>Sign in with your Meridian Group Microsoft account to access the Staedtler field scorecard data.</p>
+    <button id="sign-in-btn">Sign in with Microsoft</button>
+    <div id="auth-error"></div>
+  </div>
+</div>
+
+<!-- LOADING -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div id="loading-msg">Loading scorecard data…</div>
+</div>
+
+<!-- HEADER -->
+<header>
+  <img src="https://cpillay2404.github.io/staedtler-scorecard-dashboard/Staedtler.png"
+       onerror="this.style.display='none'" class="header-logo" alt="Staedtler">
+  <div class="header-divider"></div>
+  <div>
+    <div class="header-title">Field Scorecard Dashboard</div>
+    <div class="header-subtitle">KAMS – South Africa</div>
+  </div>
+  <div class="header-right">
+    <span id="last-updated"></span>
+    <button id="refresh-btn">↻ Refresh</button>
+  </div>
+</header>
+
+<!-- TABS -->
+<div class="tabs">
+  <button class="tab-btn active" data-tab="overview">Overview</button>
+  <button class="tab-btn" data-tab="reps">Rep Performance</button>
+  <button class="tab-btn" data-tab="stores">Store Performance</button>
+  <button class="tab-btn" data-tab="skus">SKU Compliance</button>
+</div>
+
+<!-- FILTER BAR -->
+<div class="filter-bar">
+  <label>Month</label>
+  <select id="f-month"><option value="">All Months</option></select>
+  <label>Banner</label>
+  <select id="f-banner"><option value="">All Banners</option></select>
+  <label>Region</label>
+  <select id="f-region"><option value="">All Regions</option></select>
+  <label>Rep</label>
+  <select id="f-rep"><option value="">All Reps</option></select>
+</div>
+
+<main>
+
+  <!-- OVERVIEW TAB -->
+  <div class="tab-panel active" id="tab-overview">
+    <div class="kpi-strip" id="kpi-strip"></div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><span class="card-title">SKU Compliance by Banner</span></div>
+        <div class="card-body"><div class="chart-wrap"><canvas id="chart-banner"></canvas></div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Submissions by Month</span></div>
+        <div class="card-body"><div class="chart-wrap"><canvas id="chart-monthly"></canvas></div></div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><span class="card-title">SKU Compliance by Region</span></div>
+        <div class="card-body"><div class="chart-wrap"><canvas id="chart-region"></canvas></div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Top 10 Missing SKUs</span></div>
+        <div class="card-body" id="missing-skus-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- REPS TAB -->
+  <div class="tab-panel" id="tab-reps">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Rep Scorecard Summary</span></div>
+      <div class="card-body" style="padding:0;">
+        <table class="data-table" id="rep-table">
+          <thead>
+            <tr>
+              <th>Rep</th>
+              <th>Region</th>
+              <th>Submissions</th>
+              <th>Stores Visited</th>
+              <th>SKUs Checked</th>
+              <th>SKUs On Shelf</th>
+              <th style="min-width:160px">Compliance</th>
+            </tr>
+          </thead>
+          <tbody id="rep-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- STORES TAB -->
+  <div class="tab-panel" id="tab-stores">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Store Performance</span>
+        <input id="store-search" placeholder="Search store…" style="border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;width:200px;">
+      </div>
+      <div class="card-body" style="padding:0;">
+        <table class="data-table" id="store-table">
+          <thead>
+            <tr>
+              <th>Store</th>
+              <th>Banner</th>
+              <th>Region</th>
+              <th>Visits</th>
+              <th>SKUs Checked</th>
+              <th>SKUs On Shelf</th>
+              <th style="min-width:160px">Compliance</th>
+              <th>Last Visit</th>
+            </tr>
+          </thead>
+          <tbody id="store-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- SKUs TAB -->
+  <div class="tab-panel" id="tab-skus">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><span class="card-title">SKU Compliance Rate — All Banners</span></div>
+        <div class="card-body" style="padding:0; max-height:600px; overflow-y:auto;">
+          <table class="data-table" id="sku-table">
+            <thead>
+              <tr>
+                <th>SKU / Question</th>
+                <th>Checked</th>
+                <th>On Shelf</th>
+                <th style="min-width:140px">Rate</th>
+              </tr>
+            </thead>
+            <tbody id="sku-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Compliance Rate Distribution</span></div>
+        <div class="card-body"><div class="chart-wrap-tall"><canvas id="chart-sku-dist"></canvas></div></div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════════
+const CONFIG = {
+  clientId:   '0e4070b3-fe5d-40c8-9060-5f970dbd0cf3',
+  tenantId:   'cbe83df2-b350-4dab-8d5f-f78d21fe7d27',
+  // Update this to the new GitHub Pages URL once repo is created:
+  redirectUri: 'https://cpillay2404.github.io/staedtler-scorecard-dashboard/',
+  scopes: ['https://graph.microsoft.com/Files.Read.All', 'https://graph.microsoft.com/Sites.Read.All'],
+  siteHostname: 'meridiangroupza.sharepoint.com',
+  sitePath: '/sites/The3Amigas',
+  filePath: 'The 3 Amigas - Documents/Staedtler/Scorecard/New Data/Form Report_2026-06-29_08-58-31.xlsx'
+};
+
+// ═══════════════════════════════════════════════════════════
+// AUTH  (PKCE implicit-style via hash redirect)
+// ═══════════════════════════════════════════════════════════
+let accessToken = null;
+
+function buildAuthUrl() {
+  const params = new URLSearchParams({
+    client_id:     CONFIG.clientId,
+    response_type: 'token',
+    redirect_uri:  CONFIG.redirectUri,
+    scope:         CONFIG.scopes.join(' '),
+    response_mode: 'fragment',
+    nonce:         Math.random().toString(36).slice(2)
+  });
+  return `https://login.microsoftonline.com/${CONFIG.tenantId}/oauth2/v2.0/authorize?${params}`;
+}
+
+function parseHashToken() {
+  const hash = window.location.hash.substring(1);
+  if (!hash) return null;
+  const p = new URLSearchParams(hash);
+  if (p.get('access_token')) {
+    history.replaceState(null, '', window.location.pathname);
+    return p.get('access_token');
+  }
+  return null;
+}
+
+function checkStoredToken() {
+  const t  = sessionStorage.getItem('staedtler_token');
+  const ex = sessionStorage.getItem('staedtler_token_exp');
+  if (t && ex && Date.now() < parseInt(ex)) return t;
+  return null;
+}
+
+function storeToken(token, expiresIn = 3600) {
+  sessionStorage.setItem('staedtler_token', token);
+  sessionStorage.setItem('staedtler_token_exp', Date.now() + expiresIn * 1000 - 60000);
+}
+
+// ═══════════════════════════════════════════════════════════
+// GRAPH API
+// ═══════════════════════════════════════════════════════════
+async function graphGet(url) {
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) throw new Error(`Graph ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+async function fetchExcelBuffer() {
+  setLoading('Finding SharePoint site…');
+  const siteRes = await graphGet(
+    `https://graph.microsoft.com/v1.0/sites/${CONFIG.siteHostname}:${CONFIG.sitePath}`
+  );
+  const siteId = siteRes.id;
+
+  setLoading('Locating file…');
+  const driveRes = await graphGet(`https://graph.microsoft.com/v1.0/sites/${siteId}/drive`);
+  const driveId = driveRes.id;
+
+  const encodedPath = encodeURIComponent(CONFIG.filePath);
+  const itemRes = await graphGet(
+    `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${encodedPath}`
+  );
+  const itemId = itemRes.id;
+
+  setLoading('Downloading scorecard data…');
+  const dlRes = await fetch(
+    `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/content`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!dlRes.ok) throw new Error('Download failed: ' + dlRes.status);
+  return dlRes.arrayBuffer();
+}
+
+// ═══════════════════════════════════════════════════════════
+// DATA PARSING
+// ═══════════════════════════════════════════════════════════
+let RAW = [];  // parsed rows from Submission Answers
+let FILTERED = [];
+
+function bannerShort(formName) {
+  if (!formName) return 'Other';
+  const f = formName.toString().toUpperCase();
+  if (f.includes('SPAR'))     return 'SPAR';
+  if (f.includes('MAKRO'))    return 'Makro';
+  if (f.includes('GAME'))     return 'Game';
+  if (f.includes('PNP') || f.includes('PICK')) return 'PnP';
+  if (f.includes('SHOPRITE') || f.includes('CHECKERS')) return 'Shoprite/Checkers';
+  if (f.includes('KITKAT'))   return 'KitKat';
+  if (f.includes('PRESIDENT') || f.includes('HYPER')) return 'President Hyper';
+  return 'Other';
+}
+
+function isSkuQuestion(q) {
+  if (!q) return false;
+  const ql = q.toString().toLowerCase().trim();
+  return (ql.startsWith('is the ') || ql.startsWith('is staedtler') ||
+          ql.startsWith('is ') && ql.includes(' on shelf')) &&
+         !ql.startsWith('is the flow') && !ql.startsWith('is the stock') &&
+         !ql.startsWith('in the back');
+}
+
+function isYes(answer) {
+  if (!answer) return false;
+  const a = answer.toString().toLowerCase().trim();
+  return a === 'yes' || a === 'y' || a === '1' || a === 'true';
+}
+
+function parseWorkbook(buffer) {
+  const wb = XLSX.read(buffer, { type: 'array' });
+  const ws = wb.Sheets['Submission Answers'];
+  if (!ws) throw new Error('Sheet "Submission Answers" not found');
+
+  const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+  
+  return data.map(r => ({
+    month:     (r['Month'] || r['Date'] || '').toString().slice(0, 7),
+    date:      r['Date'] || '',
+    subId:     r['Submission ID'] || '',
+    store:     (r['Customer Name'] || '').toString().trim(),
+    region:    (r['Region'] || '').toString().trim(),
+    user:      (r['User'] || '').toString().trim(),
+    userCode:  r['User Code'] || '',
+    manager:   r['Manager'] || '',
+    formName:  (r['Form Name'] || '').toString().trim(),
+    question:  (r['Question'] || '').toString().trim(),
+    answer:    (r['Answer'] || '').toString().trim(),
+    banner:    bannerShort(r['Form Name']),
+    isSku:     isSkuQuestion(r['Question']),
+    isYes:     isYes(r['Answer'])
+  }));
+}
+
+// ═══════════════════════════════════════════════════════════
+// FILTERING
+// ═══════════════════════════════════════════════════════════
+function applyFilters() {
+  const month  = document.getElementById('f-month').value;
+  const banner = document.getElementById('f-banner').value;
+  const region = document.getElementById('f-region').value;
+  const rep    = document.getElementById('f-rep').value;
+
+  FILTERED = RAW.filter(r => {
+    if (month  && !r.month.includes(month))   return false;
+    if (banner && r.banner !== banner)         return false;
+    if (region && r.region !== region)         return false;
+    if (rep    && r.user !== rep)              return false;
+    return true;
+  });
+  renderAll();
+}
+
+function populateFilters() {
+  const months  = [...new Set(RAW.map(r => r.month))].filter(Boolean).sort();
+  const banners = [...new Set(RAW.map(r => r.banner))].filter(Boolean).sort();
+  const regions = [...new Set(RAW.map(r => r.region))].filter(Boolean).sort();
+  const reps    = [...new Set(RAW.map(r => r.user))].filter(Boolean).sort();
+
+  fillSelect('f-month',  months,  m => ({ value: m, text: m }));
+  fillSelect('f-banner', banners, b => ({ value: b, text: b }));
+  fillSelect('f-region', regions, r => ({ value: r, text: r }));
+  fillSelect('f-rep',    reps,    r => ({ value: r, text: r }));
+}
+
+function fillSelect(id, items, mapper) {
+  const sel = document.getElementById(id);
+  const cur = sel.value;
+  while (sel.options.length > 1) sel.remove(1);
+  items.forEach(i => {
+    const m = mapper(i);
+    const opt = document.createElement('option');
+    opt.value = m.value;
+    opt.textContent = m.text;
+    sel.add(opt);
+  });
+  if (cur) sel.value = cur;
+}
+
+// ═══════════════════════════════════════════════════════════
+// ANALYTICS HELPERS
+// ═══════════════════════════════════════════════════════════
+function groupBy(arr, key) {
+  return arr.reduce((acc, r) => {
+    (acc[r[key]] = acc[r[key]] || []).push(r);
+    return acc;
+  }, {});
+}
+
+function skuStats(rows) {
+  const sku = rows.filter(r => r.isSku);
+  const yes = sku.filter(r => r.isYes);
+  return { total: sku.length, yes: yes.length, pct: sku.length ? Math.round(yes.length / sku.length * 100) : 0 };
+}
+
+function scorePillClass(pct) {
+  return pct >= 75 ? 'score-high' : pct >= 50 ? 'score-mid' : 'score-low';
+}
+
+function progressBar(pct) {
+  const cls = scorePillClass(pct);
+  const colour = pct >= 75 ? '#1a7f4e' : pct >= 50 ? '#b45309' : '#c0392b';
+  return `<div class="progress-wrap">
+    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${pct}%;background:${colour}"></div></div>
+    <span class="progress-pct">${pct}%</span>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// CHARTS
+// ═══════════════════════════════════════════════════════════
+const CHARTS = {};
+
+const BLUE_PALETTE = [
+  '#003DA5','#1a52b8','#3367cb','#4d7cde','#6691f1',
+  '#80a5ff','#99baff','#b3ceff','#cce3ff','#e6f1ff'
+];
+
+function destroyChart(id) {
+  if (CHARTS[id]) { CHARTS[id].destroy(); delete CHARTS[id]; }
+}
+
+function renderBannerChart() {
+  destroyChart('banner');
+  const byBanner = groupBy(FILTERED.filter(r => r.isSku), 'banner');
+  const labels = Object.keys(byBanner).sort();
+  const data = labels.map(b => {
+    const rows = byBanner[b];
+    return rows.length ? Math.round(rows.filter(r => r.isYes).length / rows.length * 100) : 0;
+  });
+
+  const ctx = document.getElementById('chart-banner').getContext('2d');
+  CHARTS['banner'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ data, backgroundColor: BLUE_PALETTE.slice(0, labels.length), borderRadius: 5, borderSkipped: false }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%', font: { size: 11 } } },
+        x: { ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+function renderMonthlyChart() {
+  destroyChart('monthly');
+  const byMonth = groupBy(FILTERED, 'month');
+  const months = Object.keys(byMonth).sort();
+  const subCounts = months.map(m => new Set(byMonth[m].map(r => r.subId)).size);
+
+  const ctx = document.getElementById('chart-monthly').getContext('2d');
+  CHARTS['monthly'] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: months,
+      datasets: [{
+        data: subCounts,
+        borderColor: '#003DA5',
+        backgroundColor: 'rgba(0,61,165,0.08)',
+        fill: true,
+        tension: 0.3,
+        pointBackgroundColor: '#003DA5',
+        pointRadius: 5
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { font: { size: 11 } } },
+        x: { ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+function renderRegionChart() {
+  destroyChart('region');
+  const byRegion = groupBy(FILTERED.filter(r => r.isSku), 'region');
+  const labels = Object.keys(byRegion).sort();
+  const data = labels.map(rg => {
+    const rows = byRegion[rg];
+    return rows.length ? Math.round(rows.filter(r => r.isYes).length / rows.length * 100) : 0;
+  });
+
+  const ctx = document.getElementById('chart-region').getContext('2d');
+  CHARTS['region'] = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ data, backgroundColor: '#003DA5', borderRadius: 5, borderSkipped: false }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+      scales: {
+        x: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%', font: { size: 11 } } },
+        y: { ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+function renderSkuDistChart(skuData) {
+  destroyChart('sku-dist');
+  const buckets = { '0–25%': 0, '26–50%': 0, '51–75%': 0, '76–100%': 0 };
+  skuData.forEach(s => {
+    if (s.pct <= 25)       buckets['0–25%']++;
+    else if (s.pct <= 50)  buckets['26–50%']++;
+    else if (s.pct <= 75)  buckets['51–75%']++;
+    else                   buckets['76–100%']++;
+  });
+
+  const ctx = document.getElementById('chart-sku-dist').getContext('2d');
+  CHARTS['sku-dist'] = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(buckets),
+      datasets: [{ data: Object.values(buckets), backgroundColor: ['#c0392b','#e67e22','#f0c040','#1a7f4e'], borderWidth: 2 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER PANELS
+// ═══════════════════════════════════════════════════════════
+function renderKPIs() {
+  const skuRows     = FILTERED.filter(r => r.isSku);
+  const totalSubs   = new Set(FILTERED.map(r => r.subId)).size;
+  const totalStores = new Set(FILTERED.map(r => r.store)).size;
+  const totalReps   = new Set(FILTERED.map(r => r.user)).size;
+  const onShelf     = skuRows.filter(r => r.isYes).length;
+  const totalSku    = skuRows.length;
+  const pct         = totalSku ? Math.round(onShelf / totalSku * 100) : 0;
+
+  document.getElementById('kpi-strip').innerHTML = `
+    <div class="kpi-card">
+      <div class="kpi-label">Submissions</div>
+      <div class="kpi-value">${totalSubs.toLocaleString()}</div>
+      <div class="kpi-sub">across all banners</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Stores Visited</div>
+      <div class="kpi-value">${totalStores.toLocaleString()}</div>
+      <div class="kpi-sub">unique stores</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Active Reps</div>
+      <div class="kpi-value">${totalReps}</div>
+      <div class="kpi-sub">field representatives</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">SKUs On Shelf</div>
+      <div class="kpi-value">${onShelf.toLocaleString()}</div>
+      <div class="kpi-sub">of ${totalSku.toLocaleString()} checked</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Compliance Rate</div>
+      <div class="kpi-value" style="color:${pct>=75?'#1a7f4e':pct>=50?'#b45309':'#c0392b'}">${pct}%</div>
+      <div class="kpi-sub">SKUs on shelf</div>
+    </div>`;
+}
+
+function renderMissingSkus() {
+  const byQ = groupBy(FILTERED.filter(r => r.isSku), 'question');
+  const skuStats = Object.entries(byQ).map(([q, rows]) => ({
+    q: q.replace(/^Is the |^Is /i, '').replace(/ on shelf\??$/i, '').trim(),
+    total: rows.length,
+    yes: rows.filter(r => r.isYes).length,
+    pct: Math.round(rows.filter(r => r.isYes).length / rows.length * 100)
+  })).sort((a, b) => a.pct - b.pct).slice(0, 10);
+
+  const body = document.getElementById('missing-skus-body');
+  if (!skuStats.length) { body.innerHTML = '<div class="empty-state">No data</div>'; return; }
+
+  body.innerHTML = skuStats.map(s => `
+    <div style="margin-bottom:10px;">
+      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${s.q}">${s.q}</div>
+      ${progressBar(s.pct)}
+    </div>`).join('');
+}
+
+function renderRepTable() {
+  const byRep = groupBy(FILTERED, 'user');
+  const rows = Object.entries(byRep).map(([user, rrows]) => {
+    const region = rrows[0]?.region || '';
+    const subs   = new Set(rrows.map(r => r.subId)).size;
+    const stores = new Set(rrows.map(r => r.store)).size;
+    const sku    = skuStats(rrows);
+    return { user, region, subs, stores, ...sku };
+  }).sort((a, b) => b.subs - a.subs);
+
+  document.getElementById('rep-tbody').innerHTML = rows.map(r => `
+    <tr>
+      <td><strong>${r.user}</strong></td>
+      <td><span class="month-pill">${r.region}</span></td>
+      <td class="num">${r.subs}</td>
+      <td class="num">${r.stores}</td>
+      <td class="num">${r.total}</td>
+      <td class="num">${r.yes}</td>
+      <td>${progressBar(r.pct)}</td>
+    </tr>`).join('');
+}
+
+function renderStoreTable(filter = '') {
+  const byStore = groupBy(FILTERED, 'store');
+  let rows = Object.entries(byStore).map(([store, srows]) => {
+    const banner = srows[0]?.banner || '';
+    const region = srows[0]?.region || '';
+    const visits = new Set(srows.map(r => r.subId)).size;
+    const sku    = skuStats(srows);
+    const dates  = srows.map(r => r.date).filter(Boolean).sort();
+    const lastVisit = dates[dates.length - 1] ? dates[dates.length - 1].toString().slice(0, 10) : '';
+    return { store, banner, region, visits, lastVisit, ...sku };
+  });
+
+  if (filter) {
+    const f = filter.toLowerCase();
+    rows = rows.filter(r => r.store.toLowerCase().includes(f) || r.banner.toLowerCase().includes(f));
+  }
+
+  rows.sort((a, b) => a.pct - b.pct);
+
+  document.getElementById('store-tbody').innerHTML = rows.map(r => `
+    <tr>
+      <td><strong>${r.store}</strong></td>
+      <td><span class="banner-tag">${r.banner}</span></td>
+      <td>${r.region}</td>
+      <td class="num">${r.visits}</td>
+      <td class="num">${r.total}</td>
+      <td class="num">${r.yes}</td>
+      <td>${progressBar(r.pct)}</td>
+      <td style="color:var(--text-muted);font-size:11px;">${r.lastVisit}</td>
+    </tr>`).join('');
+}
+
+function renderSkuTable() {
+  const byQ = groupBy(FILTERED.filter(r => r.isSku), 'question');
+  const rows = Object.entries(byQ).map(([q, rows]) => {
+    const yes = rows.filter(r => r.isYes).length;
+    const pct = Math.round(yes / rows.length * 100);
+    return { q: q.replace(/^Is the /i, '').replace(/ on shelf\??$/i, '').trim(), total: rows.length, yes, pct };
+  }).sort((a, b) => a.pct - b.pct);
+
+  document.getElementById('sku-tbody').innerHTML = rows.map(r => `
+    <tr>
+      <td style="max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.q}">${r.q}</td>
+      <td class="num">${r.total}</td>
+      <td class="num">${r.yes}</td>
+      <td>${progressBar(r.pct)}</td>
+    </tr>`).join('');
+
+  renderSkuDistChart(rows);
+}
+
+function renderAll() {
+  renderKPIs();
+  renderBannerChart();
+  renderMonthlyChart();
+  renderRegionChart();
+  renderMissingSkus();
+  renderRepTable();
+  renderStoreTable();
+  renderSkuTable();
+}
+
+// ═══════════════════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════════════════
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// STORE SEARCH
+// ═══════════════════════════════════════════════════════════
+document.getElementById('store-search').addEventListener('input', e => {
+  renderStoreTable(e.target.value);
+});
+
+// ═══════════════════════════════════════════════════════════
+// FILTER EVENTS
+// ═══════════════════════════════════════════════════════════
+['f-month','f-banner','f-region','f-rep'].forEach(id => {
+  document.getElementById(id).addEventListener('change', applyFilters);
+});
+
+// ═══════════════════════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════════════════════
+function setLoading(msg, show = true) {
+  const el = document.getElementById('loading-overlay');
+  el.style.display = show ? 'flex' : 'none';
+  document.getElementById('loading-msg').textContent = msg || '';
+}
+
+function showError(msg) {
+  const el = document.getElementById('auth-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// ═══════════════════════════════════════════════════════════
+// MAIN FLOW
+// ═══════════════════════════════════════════════════════════
+async function loadData() {
+  try {
+    setLoading('Connecting to SharePoint…', true);
+    const buffer = await fetchExcelBuffer();
+    setLoading('Parsing scorecard data…', true);
+    RAW = parseWorkbook(buffer);
+    FILTERED = [...RAW];
+    populateFilters();
+    renderAll();
+    document.getElementById('last-updated').textContent = 
+      'Updated ' + new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
+    setLoading('', false);
+  } catch (err) {
+    setLoading('', false);
+    alert('Error loading data: ' + err.message);
+    console.error(err);
+  }
+}
+
+async function init() {
+  // Check for token in URL hash (post-redirect)
+  const hashToken = parseHashToken();
+  if (hashToken) {
+    accessToken = hashToken;
+    storeToken(hashToken);
+    document.getElementById('auth-overlay').style.display = 'none';
+    await loadData();
+    return;
+  }
+
+  // Check session storage
+  const stored = checkStoredToken();
+  if (stored) {
+    accessToken = stored;
+    document.getElementById('auth-overlay').style.display = 'none';
+    await loadData();
+    return;
+  }
+
+  // Show sign-in
+  document.getElementById('auth-overlay').style.display = 'flex';
+}
+
+document.getElementById('sign-in-btn').addEventListener('click', () => {
+  window.location.href = buildAuthUrl();
+});
+
+document.getElementById('refresh-btn').addEventListener('click', async () => {
+  if (!accessToken) return;
+  await loadData();
+});
+
+init();
+</script>
+</body>
+</html>
+EOF
