@@ -4,1192 +4,1007 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Staedtler Scorecard Dashboard</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <style>
   :root {
-    --staedtler-blue: #003DA5;
-    --staedtler-mid: #1a52b8;
-    --staedtler-light: #e8eef8;
-    --staedtler-accent: #ffffff;
-    --text-primary: #0d1b3e;
-    --text-secondary: #4a5568;
-    --text-muted: #8a9ab8;
-    --border: #d1daea;
-    --success: #1a7f4e;
-    --success-bg: #e8f5ee;
-    --warn: #b45309;
-    --warn-bg: #fef3cd;
-    --danger: #c0392b;
-    --danger-bg: #fdecea;
-    --card-bg: #ffffff;
-    --page-bg: #f0f4fc;
-    --header-height: 64px;
+    --blue:#003DA5;--mid:#1a52b8;--light:#e8eef8;
+    --text:#0d1b3e;--muted:#6b7a99;--border:#d1daea;
+    --success:#1a7f4e;--success-bg:#e8f5ee;
+    --warn:#b45309;--warn-bg:#fef3cd;
+    --danger:#c0392b;--danger-bg:#fdecea;
+    --page:#f0f4fc;
   }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:"Segoe UI",system-ui,sans-serif;background:var(--page);color:var(--text);}
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  header{background:var(--blue);height:58px;display:flex;align-items:center;
+    padding:0 24px;gap:14px;position:sticky;top:0;z-index:100;
+    box-shadow:0 2px 8px rgba(0,61,165,.25);}
+  .hlogo{height:36px;}
+  .hdiv{width:1px;height:26px;background:rgba(255,255,255,.3);}
+  .htitle{color:#fff;font-size:15px;font-weight:700;letter-spacing:.02em;}
+  .hsub{color:rgba(255,255,255,.6);font-size:11px;}
+  .hright{margin-left:auto;color:rgba(255,255,255,.5);font-size:11px;}
 
-  body {
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-    background: var(--page-bg);
-    color: var(--text-primary);
-    min-height: 100vh;
-  }
+  .tabs{background:var(--blue);padding:0 24px;display:flex;gap:2px;}
+  .tab{padding:11px 18px;font-size:13px;font-weight:600;color:rgba(255,255,255,.6);
+    background:none;border:none;cursor:pointer;border-bottom:3px solid transparent;}
+  .tab.active{color:#fff;border-bottom-color:#fff;}
 
-  /* ── HEADER ── */
-  header {
-    background: var(--staedtler-blue);
-    height: var(--header-height);
-    display: flex;
-    align-items: center;
-    padding: 0 24px;
-    gap: 16px;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    box-shadow: 0 2px 8px rgba(0,61,165,0.25);
-  }
+  .filter-bar{background:#fff;border-bottom:1px solid var(--border);padding:8px 24px;
+    display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .filter-bar label{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+  .filter-bar select{border:1px solid var(--border);border-radius:6px;padding:4px 8px;
+    font-size:12px;color:var(--text);background:#fff;cursor:pointer;min-width:120px;}
 
-  .header-logo {
-    height: 36px;
-    width: auto;
-    filter: brightness(0) invert(1);
-  }
+  main{padding:20px 24px;max-width:1400px;margin:0 auto;}
+  .panel{display:none;}
+  .panel.active{display:block;}
 
-  .header-divider {
-    width: 1px;
-    height: 28px;
-    background: rgba(255,255,255,0.3);
-  }
+  /* ── KPI STRIP with sparklines ── */
+  .kpi-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;}
+  @media(max-width:1100px){.kpi-strip{grid-template-columns:repeat(3,1fr);}}
+  @media(max-width:700px){.kpi-strip{grid-template-columns:1fr 1fr;}}
 
-  .header-title {
-    color: #fff;
-    font-size: 15px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-  }
+  .kpi{background:#fff;border-radius:12px;padding:18px 18px 0;
+    border:1px solid var(--border);overflow:hidden;position:relative;}
+  .kpi-label{font-size:10px;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;}
+  .kpi-value{font-size:32px;font-weight:700;line-height:1;margin-bottom:2px;}
+  .kpi-sub{font-size:11px;color:var(--muted);margin-bottom:10px;}
+  .kpi-spark-wrap{position:relative;height:64px;margin:0 -18px;}
+  .trend-badge{position:absolute;bottom:10px;right:12px;
+    padding:2px 7px;border-radius:10px;font-size:11px;font-weight:700;z-index:2;}
+  .trend-up{background:#e8f5ee;color:#1a7f4e;}
+  .trend-down{background:#fdecea;color:#c0392b;}
+  .trend-flat{background:#f0f4fc;color:#6b7a99;}
 
-  .header-subtitle {
-    color: rgba(255,255,255,0.65);
-    font-size: 12px;
-    margin-top: 1px;
-  }
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+  @media(max-width:900px){.grid2{grid-template-columns:1fr;}}
 
-  .header-right {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
+  .card{background:#fff;border-radius:10px;border:1px solid var(--border);overflow:hidden;}
+  .card-hd{padding:13px 18px;border-bottom:1px solid var(--border);font-size:11px;
+    font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.05em;
+    display:flex;align-items:center;justify-content:space-between;}
+  .card-bd{padding:16px 18px;}
+  .ch{position:relative;height:230px;}
+  .ch-tall{position:relative;height:300px;}
 
-  #last-updated {
-    color: rgba(255,255,255,0.6);
-    font-size: 11px;
-  }
+  table{width:100%;border-collapse:collapse;font-size:12px;}
+  th{text-align:left;padding:8px 10px;font-size:10px;font-weight:700;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);
+    background:#f8faff;white-space:nowrap;}
+  td{padding:8px 10px;border-bottom:1px solid #f0f4fc;vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:#f8faff;}
+  td.num{font-variant-numeric:tabular-nums;text-align:right;font-weight:600;}
 
-  #refresh-btn {
-    background: rgba(255,255,255,0.15);
-    border: 1px solid rgba(255,255,255,0.3);
-    color: #fff;
-    padding: 6px 14px;
-    border-radius: 6px;
-    font-size: 12px;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-  #refresh-btn:hover { background: rgba(255,255,255,0.25); }
+  .pb{display:flex;align-items:center;gap:7px;}
+  .pb-bg{flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden;min-width:80px;}
+  .pb-fill{height:100%;border-radius:3px;}
+  .pb-pct{font-size:11px;font-weight:700;min-width:32px;text-align:right;color:#4a5568;}
 
-  /* ── AUTH OVERLAY ── */
-  #auth-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,61,165,0.95);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-  }
+  .tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;
+    font-weight:600;background:var(--light);color:var(--blue);}
+  .tag-r{background:#f0f4fc;color:#4a5568;}
 
-  .auth-card {
-    background: #fff;
-    border-radius: 12px;
-    padding: 40px 48px;
-    text-align: center;
-    max-width: 400px;
-    width: 90%;
-    box-shadow: 0 24px 48px rgba(0,0,0,0.3);
-  }
+  #store-search{border:1px solid var(--border);border-radius:6px;padding:4px 10px;
+    font-size:12px;width:180px;}
+  .missing-item{margin-bottom:10px;}
+  .missing-label{font-size:11px;color:#4a5568;margin-bottom:3px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .scroll-table{max-height:560px;overflow-y:auto;}
 
-  .auth-card img {
-    height: 48px;
-    margin-bottom: 20px;
-  }
+  .banner-heat-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .banner-heat-table th { text-align:left; padding:10px 14px; font-size:10px; font-weight:700;
+    color:var(--muted); text-transform:uppercase; letter-spacing:.06em;
+    border-bottom:2px solid var(--border); background:#f8faff; }
+  .banner-heat-table td { padding:10px 14px; border-bottom:1px solid #f0f4fc; }
+  .banner-heat-table tr:last-child td { border-bottom:none; }
+  .banner-heat-table tfoot td { padding:10px 14px; font-weight:700;
+    border-top:2px solid var(--border); background:#f8faff; }
+  .heat-cell { border-radius:4px; padding:3px 10px; text-align:center;
+    display:inline-block; min-width:50px; font-weight:700; font-size:12px; }
+  .heat-red   { background:#fdecea; color:#c0392b; }
+  .heat-amber { background:#fef3cd; color:#b45309; }
+  .heat-green { background:#e8f5ee; color:#1a7f4e; }
 
-  .auth-card h2 {
-    font-size: 20px;
-    color: var(--staedtler-blue);
-    margin-bottom: 8px;
-  }
 
-  .auth-card p {
-    font-size: 13px;
-    color: var(--text-secondary);
-    margin-bottom: 24px;
-    line-height: 1.5;
-  }
+  #sku-modal{display:none;position:fixed;inset:0;z-index:200;background:rgba(0,20,60,.55);align-items:center;justify-content:center;}
+  #sku-modal.open{display:flex;}
+  .modal-box{background:#fff;border-radius:12px;width:95%;max-width:1100px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 24px 48px rgba(0,0,0,.25);}
+  .modal-hd{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+  .modal-title{font-size:13px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.05em;}
+  .modal-sub{font-size:11px;color:var(--muted);margin-top:2px;}
+  .modal-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1;padding:4px 8px;border-radius:4px;}
+  .modal-close:hover{background:var(--light);color:var(--text);}
+  .modal-body{overflow-y:auto;flex:1;}
+  .modal-body table{width:100%;border-collapse:collapse;font-size:12px;}
+  .modal-body th{position:sticky;top:0;text-align:left;padding:8px 14px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);background:#f8faff;}
+  .modal-body td{padding:8px 14px;border-bottom:1px solid #f0f4fc;white-space:nowrap;}
+  .modal-body tr:last-child td{border-bottom:none;}
+  .modal-body tr:hover td{background:#f8faff;}
+  .sku-row{cursor:pointer;}
+  .sku-row:hover td{background:#f0f4fc !important;}
 
-  #sign-in-btn {
-    background: var(--staedtler-blue);
-    color: #fff;
-    border: none;
-    padding: 12px 32px;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    width: 100%;
-    transition: background 0.15s;
-  }
-  #sign-in-btn:hover { background: var(--staedtler-mid); }
-
-  #auth-error {
-    margin-top: 12px;
-    color: var(--danger);
-    font-size: 12px;
-    display: none;
-  }
-
-  /* ── LOADING ── */
-  #loading-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(240,244,252,0.92);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 16px;
-    z-index: 500;
-  }
-
-  .spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid var(--border);
-    border-top-color: var(--staedtler-blue);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  #loading-msg { color: var(--text-secondary); font-size: 14px; }
-
-  /* ── FILTERS ── */
-  .filter-bar {
-    background: #fff;
-    border-bottom: 1px solid var(--border);
-    padding: 10px 24px;
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-
-  .filter-bar label {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    white-space: nowrap;
-  }
-
-  .filter-bar select {
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 5px 10px;
-    font-size: 13px;
-    color: var(--text-primary);
-    background: #fff;
-    cursor: pointer;
-    min-width: 130px;
-  }
-
-  /* ── TABS ── */
-  .tabs {
-    background: var(--staedtler-blue);
-    padding: 0 24px;
-    display: flex;
-    gap: 2px;
-  }
-
-  .tab-btn {
-    padding: 12px 20px;
-    font-size: 13px;
-    font-weight: 600;
-    color: rgba(255,255,255,0.65);
-    background: none;
-    border: none;
-    cursor: pointer;
-    border-bottom: 3px solid transparent;
-    transition: color 0.15s, border-color 0.15s;
-    white-space: nowrap;
-  }
-  .tab-btn:hover { color: rgba(255,255,255,0.9); }
-  .tab-btn.active {
-    color: #fff;
-    border-bottom-color: #fff;
-  }
-
-  /* ── MAIN ── */
-  main {
-    padding: 24px;
-    max-width: 1400px;
-    margin: 0 auto;
-  }
-
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
-
-  /* ── KPI STRIP ── */
-  .kpi-strip {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 12px;
-    margin-bottom: 24px;
-  }
-
-  .kpi-card {
-    background: var(--card-bg);
-    border-radius: 10px;
-    padding: 16px 18px;
-    border: 1px solid var(--border);
-    border-top: 3px solid var(--staedtler-blue);
-  }
-
-  .kpi-label {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    margin-bottom: 6px;
-  }
-
-  .kpi-value {
-    font-size: 28px;
-    font-weight: 700;
-    color: var(--staedtler-blue);
-    line-height: 1;
-  }
-
-  .kpi-sub {
-    font-size: 11px;
-    color: var(--text-muted);
-    margin-top: 4px;
-  }
-
-  /* ── GRID ── */
-  .grid-2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 16px;
-  }
-
-  .grid-3 {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 16px;
-  }
-
-  @media (max-width: 900px) {
-    .grid-2, .grid-3 { grid-template-columns: 1fr; }
-  }
-
-  /* ── CARD ── */
-  .card {
-    background: var(--card-bg);
-    border-radius: 10px;
-    border: 1px solid var(--border);
-    overflow: hidden;
-  }
-
-  .card-header {
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .card-title {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--text-primary);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .card-body {
-    padding: 16px 18px;
-  }
-
-  /* ── TABLE ── */
-  .data-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-  }
-
-  .data-table th {
-    text-align: left;
-    padding: 8px 10px;
-    font-size: 10px;
-    font-weight: 700;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    border-bottom: 1px solid var(--border);
-    background: #f8faff;
-    white-space: nowrap;
-  }
-
-  .data-table td {
-    padding: 9px 10px;
-    border-bottom: 1px solid #f0f4fc;
-    color: var(--text-primary);
-    vertical-align: middle;
-  }
-
-  .data-table tr:last-child td { border-bottom: none; }
-  .data-table tr:hover td { background: #f8faff; }
-
-  .data-table td.num {
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-    font-weight: 600;
-  }
-
-  /* ── SCORE BADGES ── */
-  .score-pill {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-size: 11px;
-    font-weight: 700;
-  }
-
-  .score-high { background: var(--success-bg); color: var(--success); }
-  .score-mid  { background: var(--warn-bg);    color: var(--warn); }
-  .score-low  { background: var(--danger-bg);  color: var(--danger); }
-
-  /* ── PROGRESS BAR ── */
-  .progress-wrap { display: flex; align-items: center; gap: 8px; }
-  .progress-bar-bg {
-    flex: 1;
-    height: 6px;
-    background: var(--border);
-    border-radius: 3px;
-    overflow: hidden;
-  }
-  .progress-bar-fill {
-    height: 100%;
-    border-radius: 3px;
-    background: var(--staedtler-blue);
-    transition: width 0.4s ease;
-  }
-  .progress-pct { font-size: 11px; font-weight: 700; min-width: 34px; text-align: right; color: var(--text-secondary); }
-
-  /* ── CHART CONTAINER ── */
-  .chart-wrap {
-    position: relative;
-    height: 240px;
-  }
-
-  .chart-wrap-tall {
-    position: relative;
-    height: 320px;
-  }
-
-  /* ── BANNER TAG ── */
-  .banner-tag {
-    display: inline-block;
-    padding: 2px 7px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 600;
-    background: var(--staedtler-light);
-    color: var(--staedtler-blue);
-  }
-
-  /* ── EMPTY STATE ── */
-  .empty-state {
-    text-align: center;
-    padding: 48px 24px;
-    color: var(--text-muted);
-    font-size: 13px;
-  }
-
-  /* ── MONTH PILL ── */
-  .month-pill {
-    display: inline-block;
-    padding: 2px 8px;
-    background: var(--staedtler-light);
-    color: var(--staedtler-blue);
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 600;
-  }
 </style>
 </head>
 <body>
 
-<!-- AUTH OVERLAY -->
-<div id="auth-overlay">
-  <div class="auth-card">
-    <img src="https://cpillay2404.github.io/staedtler-scorecard-dashboard/Staedtler.png" 
-         onerror="this.style.display='none'" alt="Staedtler">
-    <h2>Scorecard Dashboard</h2>
-    <p>Sign in with your Meridian Group Microsoft account to access the Staedtler field scorecard data.</p>
-    <button id="sign-in-btn">Sign in with Microsoft</button>
-    <div id="auth-error"></div>
-  </div>
-</div>
-
-<!-- LOADING -->
-<div id="loading-overlay">
-  <div class="spinner"></div>
-  <div id="loading-msg">Loading scorecard data…</div>
-</div>
-
-<!-- HEADER -->
 <header>
-  <img src="https://cpillay2404.github.io/staedtler-scorecard-dashboard/Staedtler.png"
-       onerror="this.style.display='none'" class="header-logo" alt="Staedtler">
-  <div class="header-divider"></div>
+  <img src="data:image/png;base64,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" class="hlogo" alt="Staedtler">
+  <div class="hdiv"></div>
   <div>
-    <div class="header-title">Field Scorecard Dashboard</div>
-    <div class="header-subtitle">KAMS – South Africa</div>
+    <div class="htitle">Field Scorecard Dashboard</div>
+    <div class="hsub">KAMS – South Africa &nbsp;·&nbsp; Static Preview</div>
   </div>
-  <div class="header-right">
-    <span id="last-updated"></span>
-    <button id="refresh-btn">↻ Refresh</button>
-  </div>
+  <div class="hright" style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;"><span>Data: 29 Jun 2026 &nbsp;·&nbsp; 1,023 submissions</span><img src="data:image/png;base64,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" style="height:22px;opacity:0.9;" alt="Meridian Group"></div>
 </header>
 
-<!-- TABS -->
 <div class="tabs">
-  <button class="tab-btn active" data-tab="overview">Overview</button>
-  <button class="tab-btn" data-tab="reps">Rep Performance</button>
-  <button class="tab-btn" data-tab="stores">Store Performance</button>
-  <button class="tab-btn" data-tab="skus">SKU Compliance</button>
+  <button class="tab active" data-tab="overview">Overview</button>
+  <button class="tab" data-tab="stores">Store Performance</button>
+  <button class="tab" data-tab="skus">SKU Compliance</button>
+  <button class="tab" data-tab="reps">Rep Performance</button>
 </div>
 
-<!-- FILTER BAR -->
 <div class="filter-bar">
-  <label>Month</label>
-  <select id="f-month"><option value="">All Months</option></select>
-  <label>Banner</label>
-  <select id="f-banner"><option value="">All Banners</option></select>
-  <label>Region</label>
-  <select id="f-region"><option value="">All Regions</option></select>
-  <label>Rep</label>
-  <select id="f-rep"><option value="">All Reps</option></select>
+  <label>Banner</label><select id="f-banner"><option value="">All Banners</option></select>
+  <label>Region</label><select id="f-region"><option value="">All Regions</option></select>
+  <label>Rep</label><select id="f-rep"><option value="">All Reps</option></select>
+  <label>Month</label><select id="f-month"><option value="">All Months</option></select>
 </div>
 
 <main>
 
-  <!-- OVERVIEW TAB -->
-  <div class="tab-panel active" id="tab-overview">
-    <div class="kpi-strip" id="kpi-strip"></div>
-    <div class="grid-2">
-      <div class="card">
-        <div class="card-header"><span class="card-title">SKU Compliance by Banner</span></div>
-        <div class="card-body"><div class="chart-wrap"><canvas id="chart-banner"></canvas></div></div>
-      </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">Submissions by Month</span></div>
-        <div class="card-body"><div class="chart-wrap"><canvas id="chart-monthly"></canvas></div></div>
-      </div>
-    </div>
-    <div class="grid-2">
-      <div class="card">
-        <div class="card-header"><span class="card-title">SKU Compliance by Region</span></div>
-        <div class="card-body"><div class="chart-wrap"><canvas id="chart-region"></canvas></div></div>
-      </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">Top 10 Missing SKUs</span></div>
-        <div class="card-body" id="missing-skus-body"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- REPS TAB -->
-  <div class="tab-panel" id="tab-reps">
+<div class="panel active" id="tab-overview">
+  <div class="kpi-strip" id="kpi-strip"></div>
+  <!-- BANNER + REGION SECTION -->
+  <div class="grid2" style="margin-bottom:16px">
     <div class="card">
-      <div class="card-header"><span class="card-title">Rep Scorecard Summary</span></div>
-      <div class="card-body" style="padding:0;">
-        <table class="data-table" id="rep-table">
-          <thead>
-            <tr>
-              <th>Rep</th>
-              <th>Region</th>
-              <th>Submissions</th>
-              <th>Stores Visited</th>
-              <th>SKUs Checked</th>
-              <th>SKUs On Shelf</th>
-              <th style="min-width:160px">Compliance</th>
-            </tr>
-          </thead>
-          <tbody id="rep-tbody"></tbody>
+      <div class="card-hd">Retailer Performance Summary</div>
+      <div class="card-bd" style="padding:0">
+        <table class="banner-heat-table">
+          <thead><tr>
+            <th style="width:38%">Retailer</th>
+            <th>Strike Rate</th>
+            <th>Flow Score</th>
+            <th>Stock Rotation</th>
+          </tr></thead>
+          <tbody id="banner-heat-tbody"></tbody>
+          <tfoot id="banner-heat-tfoot"></tfoot>
         </table>
       </div>
     </div>
-  </div>
-
-  <!-- STORES TAB -->
-  <div class="tab-panel" id="tab-stores">
     <div class="card">
-      <div class="card-header">
-        <span class="card-title">Store Performance</span>
-        <input id="store-search" placeholder="Search store…" style="border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;width:200px;">
-      </div>
-      <div class="card-body" style="padding:0;">
-        <table class="data-table" id="store-table">
-          <thead>
-            <tr>
-              <th>Store</th>
-              <th>Banner</th>
-              <th>Region</th>
-              <th>Visits</th>
-              <th>SKUs Checked</th>
-              <th>SKUs On Shelf</th>
-              <th style="min-width:160px">Compliance</th>
-              <th>Last Visit</th>
-            </tr>
-          </thead>
-          <tbody id="store-tbody"></tbody>
-        </table>
-      </div>
+      <div class="card-hd">Scores by Region</div>
+      <div class="card-bd"><div class="ch-tall"><canvas id="ch-region-grouped"></canvas></div></div>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-hd">Average Strike Rate by Region</div>
+    <div class="card-bd"><div class="ch" style="height:180px"><canvas id="ch-region-strike"></canvas></div></div>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-hd">SKU Compliance by Banner</div>
+      <div class="card-bd"><div class="ch"><canvas id="ch-banner"></canvas></div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd">Submissions by Month</div>
+      <div class="card-bd"><div class="ch"><canvas id="ch-monthly"></canvas></div></div>
+    </div>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-hd">SKU Compliance by Region</div>
+      <div class="card-bd"><div class="ch"><canvas id="ch-region"></canvas></div></div>
+    </div>
+    <div class="card">
+      <div class="card-hd">Top 10 Missing SKUs</div>
+      <div class="card-bd" id="missing-bd"></div>
     </div>
   </div>
 
-  <!-- SKUs TAB -->
-  <div class="tab-panel" id="tab-skus">
-    <div class="grid-2">
-      <div class="card">
-        <div class="card-header"><span class="card-title">SKU Compliance Rate — All Banners</span></div>
-        <div class="card-body" style="padding:0; max-height:600px; overflow-y:auto;">
-          <table class="data-table" id="sku-table">
-            <thead>
-              <tr>
-                <th>SKU / Question</th>
-                <th>Checked</th>
-                <th>On Shelf</th>
-                <th style="min-width:140px">Rate</th>
-              </tr>
-            </thead>
-            <tbody id="sku-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">Compliance Rate Distribution</span></div>
-        <div class="card-body"><div class="chart-wrap-tall"><canvas id="chart-sku-dist"></canvas></div></div>
+</div>
+
+<div class="panel" id="tab-reps">
+  <div class="card">
+    <div class="card-hd">Rep Performance</div>
+    <table><thead><tr>
+      <th>Rep</th><th>Region</th><th>Submissions</th>
+      <th>Stores</th><th>Avg Strike Rate</th><th>Flow Score</th><th>Stock Rotation</th>
+    </tr></thead><tbody id="rep-tbody"></tbody></table>
+  </div>
+</div>
+
+<div class="panel" id="tab-stores">
+  <div class="card">
+    <div class="card-hd">Store Performance (worst first)
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="store-search" placeholder="Search store…">
+        <button id="export-btn" onclick="exportStores()" style="background:var(--blue);color:#fff;border:none;padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">↓ Export Excel</button>
       </div>
     </div>
+    <div class="scroll-table">
+    <table><thead><tr>
+      <th>Region</th><th>Customer Name</th><th>User</th><th>Date</th>
+      <th>Avg Strike Rate</th><th>PI Label Score</th><th>Top20 Score</th><th>Flow Score</th><th>Rotation Score</th><th>URL</th>
+    </tr></thead><tbody id="store-tbody"></tbody></table>
+    </div>
   </div>
+</div>
+
+<div class="panel" id="tab-skus">
+  <div class="grid2">
+    <div class="card">
+      <div class="card-hd">SKU Compliance Rate</div>
+      <div class="scroll-table">
+      <table><thead><tr>
+        <th>SKU</th><th>Checked</th><th>On Shelf</th><th style="min-width:140px">Rate</th>
+      </tr></thead><tbody id="sku-tbody"></tbody></table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-hd">Compliance Distribution</div>
+      <div class="card-bd"><div class="ch-tall"><canvas id="ch-dist"></canvas></div></div>
+    </div>
+  </div>
+</div>
 
 </main>
 
+
+<!-- AUTH OVERLAY -->
+<div id="auth-overlay" style="position:fixed;inset:0;background:rgba(0,20,60,.97);display:flex;align-items:center;justify-content:center;z-index:1000;">
+  <div style="background:#fff;border-radius:12px;padding:40px 48px;text-align:center;max-width:400px;width:90%;box-shadow:0 24px 48px rgba(0,0,0,.4);">
+    <img src="Staedtler.png" onerror="this.style.display='none'" style="height:48px;margin-bottom:20px;" alt="Staedtler">
+    <h2 style="font-size:20px;color:#003DA5;margin-bottom:8px;">Scorecard Dashboard</h2>
+    <p style="font-size:13px;color:#6b7a99;margin-bottom:24px;line-height:1.6;">Sign in with your Microsoft account to access the Staedtler field scorecard data.</p>
+    <button id="sign-in-btn" style="background:#003DA5;color:#fff;border:none;padding:12px 32px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;width:100%;">Sign in with Microsoft</button>
+    <div id="auth-error" style="margin-top:12px;color:#c0392b;font-size:12px;display:none;"></div>
+  </div>
+</div>
+
+<!-- LOADING OVERLAY -->
+<div id="loading-overlay" style="position:fixed;inset:0;background:rgba(240,244,252,.92);display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px;z-index:500;">
+  <div style="width:40px;height:40px;border:3px solid #d1daea;border-top-color:#003DA5;border-radius:50%;animation:spin .8s linear infinite;"></div>
+  <div id="loading-msg" style="color:#6b7a99;font-size:14px;">Loading data…</div>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg);}}</style>
+
+<div id="sku-modal">
+  <div class="modal-box">
+    <div class="modal-hd">
+      <div><div class="modal-title" id="modal-sku-name"></div><div class="modal-sub" id="modal-sku-sub"></div></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button onclick="exportSKUDrill()" style="background:var(--blue);color:#fff;border:none;padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">↓ Export Excel</button>
+        <button class="modal-close" onclick="closeSKUModal()">✕</button>
+      </div>
+    </div>
+    <div class="modal-body">
+      <table><thead><tr><th>Store</th><th>Banner</th><th>Region</th><th>Rep</th><th>Date</th></tr></thead>
+      <tbody id="modal-tbody"></tbody></table>
+    </div>
+  </div>
+</div>
 <script>
-// ═══════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════
 // CONFIG
-// ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════
 const CONFIG = {
-  clientId:   '0e4070b3-fe5d-40c8-9060-5f970dbd0cf3',
-  tenantId:   'cbe83df2-b350-4dab-8d5f-f78d21fe7d27',
-  // Update this to the new GitHub Pages URL once repo is created:
+  clientId:    '0e4070b3-fe5d-40c8-9060-5f970dbd0cf3',
+  tenantId:    'cbe83df2-b350-4dab-8d5f-f78d21fe7d27',
   redirectUri: 'https://cpillay2404.github.io/staedtler-scorecard-dashboard/',
-  scopes: ['https://graph.microsoft.com/Files.Read.All', 'https://graph.microsoft.com/Sites.Read.All'],
+  scopes:      ['https://graph.microsoft.com/Files.Read.All','https://graph.microsoft.com/Sites.Read.All'],
   siteHostname: 'meridiangroupza.sharepoint.com',
-  sitePath: '/sites/The3Amigas',
-  filePath: 'The 3 Amigas - Documents/Staedtler/Scorecard/New Data/Form Report_2026-06-29_08-58-31.xlsx'
+  sitePath:     '/sites/The3Amigas',
+  filePath:     'The 3 Amigas - Documents/Staedtler/Scorecard/New Data/Form Report_2026-06-29_08-58-31.xlsx'
 };
 
-// ═══════════════════════════════════════════════════════════
-// AUTH  (PKCE implicit-style via hash redirect)
-// ═══════════════════════════════════════════════════════════
-let accessToken = null;
+// ═══════════════════════════════════════════
+// MSAL PKCE
+// ═══════════════════════════════════════════
+const msalConfig = {
+  auth: {
+    clientId:    CONFIG.clientId,
+    authority:   'https://login.microsoftonline.com/' + CONFIG.tenantId,
+    redirectUri: CONFIG.redirectUri
+  },
+  cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false }
+};
 
-function buildAuthUrl() {
-  const params = new URLSearchParams({
-    client_id:     CONFIG.clientId,
-    response_type: 'token',
-    redirect_uri:  CONFIG.redirectUri,
-    scope:         CONFIG.scopes.join(' '),
-    response_mode: 'fragment',
-    nonce:         Math.random().toString(36).slice(2)
-  });
-  return `https://login.microsoftonline.com/${CONFIG.tenantId}/oauth2/v2.0/authorize?${params}`;
-}
+const msalInstance = new msal.PublicClientApplication(msalConfig);
 
-function parseHashToken() {
-  const hash = window.location.hash.substring(1);
-  if (!hash) return null;
-  const p = new URLSearchParams(hash);
-  if (p.get('access_token')) {
-    history.replaceState(null, '', window.location.pathname);
-    return p.get('access_token');
+async function getToken() {
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length === 0) return null;
+  try {
+    const result = await msalInstance.acquireTokenSilent({
+      scopes: CONFIG.scopes, account: accounts[0]
+    });
+    return result.accessToken;
+  } catch (e) {
+    if (e instanceof msal.InteractionRequiredAuthError) {
+      const result = await msalInstance.acquireTokenPopup({ scopes: CONFIG.scopes });
+      return result.accessToken;
+    }
+    throw e;
   }
-  return null;
 }
 
-function checkStoredToken() {
-  const t  = sessionStorage.getItem('staedtler_token');
-  const ex = sessionStorage.getItem('staedtler_token_exp');
-  if (t && ex && Date.now() < parseInt(ex)) return t;
-  return null;
+function setLoading(msg, show=true) {
+  document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none';
+  document.getElementById('loading-msg').textContent = msg || '';
 }
 
-function storeToken(token, expiresIn = 3600) {
-  sessionStorage.setItem('staedtler_token', token);
-  sessionStorage.setItem('staedtler_token_exp', Date.now() + expiresIn * 1000 - 60000);
+function showAuthError(msg) {
+  const el = document.getElementById('auth-error');
+  el.textContent = msg; el.style.display = 'block';
 }
 
-// ═══════════════════════════════════════════════════════════
-// GRAPH API
-// ═══════════════════════════════════════════════════════════
-async function graphGet(url) {
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (!res.ok) throw new Error(`Graph ${res.status}: ${await res.text()}`);
+// ═══════════════════════════════════════════
+// GRAPH API + EXCEL PARSE
+// ═══════════════════════════════════════════
+async function graphGet(url, token) {
+  const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } });
+  if (!res.ok) throw new Error('Graph ' + res.status + ': ' + await res.text());
   return res.json();
 }
 
-async function fetchExcelBuffer() {
-  setLoading('Finding SharePoint site…');
-  const siteRes = await graphGet(
-    `https://graph.microsoft.com/v1.0/sites/${CONFIG.siteHostname}:${CONFIG.sitePath}`
-  );
-  const siteId = siteRes.id;
-
-  setLoading('Locating file…');
-  const driveRes = await graphGet(`https://graph.microsoft.com/v1.0/sites/${siteId}/drive`);
-  const driveId = driveRes.id;
-
-  const encodedPath = encodeURIComponent(CONFIG.filePath);
-  const itemRes = await graphGet(
-    `https://graph.microsoft.com/v1.0/drives/${driveId}/root:/${encodedPath}`
-  );
-  const itemId = itemRes.id;
-
-  setLoading('Downloading scorecard data…');
-  const dlRes = await fetch(
-    `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/content`,
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  if (!dlRes.ok) throw new Error('Download failed: ' + dlRes.status);
-  return dlRes.arrayBuffer();
-}
-
-// ═══════════════════════════════════════════════════════════
-// DATA PARSING
-// ═══════════════════════════════════════════════════════════
-let RAW = [];  // parsed rows from Submission Answers
-let FILTERED = [];
-
-function bannerShort(formName) {
-  if (!formName) return 'Other';
-  const f = formName.toString().toUpperCase();
-  if (f.includes('SPAR'))     return 'SPAR';
-  if (f.includes('MAKRO'))    return 'Makro';
-  if (f.includes('GAME'))     return 'Game';
+function bannerShort(form) {
+  if (!form) return 'Other';
+  const f = form.toString().toUpperCase();
+  if (f.includes('SPAR')) return 'SPAR';
+  if (f.includes('MAKRO')) return 'Makro';
+  if (f.includes('GAME')) return 'Game';
   if (f.includes('PNP') || f.includes('PICK')) return 'PnP';
   if (f.includes('SHOPRITE') || f.includes('CHECKERS')) return 'Shoprite/Checkers';
-  if (f.includes('KITKAT'))   return 'KitKat';
-  if (f.includes('PRESIDENT') || f.includes('HYPER')) return 'President Hyper';
+  if (f.includes('KITKAT') || f.includes('KIT KAT')) return 'KitKat';
+  if (f.includes('PRESIDENT')) return 'President Hyper';
   return 'Other';
 }
 
-function isSkuQuestion(q) {
+function isSku(q) {
   if (!q) return false;
   const ql = q.toString().toLowerCase().trim();
-  return (ql.startsWith('is the ') || ql.startsWith('is staedtler') ||
-          ql.startsWith('is ') && ql.includes(' on shelf')) &&
-         !ql.startsWith('is the flow') && !ql.startsWith('is the stock') &&
-         !ql.startsWith('in the back');
+  if (!(ql.startsWith('is the ') || (ql.startsWith('is ') && ql.includes('on shelf')))) return false;
+  if (ql.includes('flow') || ql.includes('stock') || ql.includes('back')) return false;
+  return true;
 }
 
-function isYes(answer) {
-  if (!answer) return false;
-  const a = answer.toString().toLowerCase().trim();
-  return a === 'yes' || a === 'y' || a === '1' || a === 'true';
+function isYes(a) {
+  if (a === null || a === undefined) return false;
+  return ['yes','y','1','true'].includes(a.toString().toLowerCase().trim());
+}
+
+function cleanSku(q) {
+  return q.replace(/^Is the /i,'').replace(/^Is /i,'')
+          .replace(/ on shelf\??$/i,'').replace(/^\d[\d\s\-]+/,'').trim().slice(0,60);
+}
+
+async function fetchAndParse() {
+  const token = await getToken();
+
+  setLoading('Finding SharePoint site…');
+  const site = await graphGet('https://graph.microsoft.com/v1.0/sites/' + CONFIG.siteHostname + ':' + CONFIG.sitePath, token);
+  const drive = await graphGet('https://graph.microsoft.com/v1.0/sites/' + site.id + '/drive', token);
+  
+  setLoading('Locating file…');
+  const item = await graphGet('https://graph.microsoft.com/v1.0/drives/' + drive.id + '/root:/' + encodeURIComponent(CONFIG.filePath), token);
+  
+  setLoading('Downloading scorecard data…');
+  const dlRes = await fetch('https://graph.microsoft.com/v1.0/drives/' + drive.id + '/items/' + item.id + '/content',
+    { headers: { Authorization: 'Bearer ' + token } });
+  if (!dlRes.ok) throw new Error('Download failed: ' + dlRes.status);
+  const buffer = await dlRes.arrayBuffer();
+
+  setLoading('Processing data…');
+  return parseWorkbook(buffer);
 }
 
 function parseWorkbook(buffer) {
   const wb = XLSX.read(buffer, { type: 'array' });
   const ws = wb.Sheets['Submission Answers'];
   if (!ws) throw new Error('Sheet "Submission Answers" not found');
+  const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
-  const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
-  
-  return data.map(r => ({
-    month:     (r['Month'] || r['Date'] || '').toString().slice(0, 7),
-    date:      r['Date'] || '',
-    subId:     r['Submission ID'] || '',
-    store:     (r['Customer Name'] || '').toString().trim(),
-    region:    (r['Region'] || '').toString().trim(),
-    user:      (r['User'] || '').toString().trim(),
-    userCode:  r['User Code'] || '',
-    manager:   r['Manager'] || '',
-    formName:  (r['Form Name'] || '').toString().trim(),
-    question:  (r['Question'] || '').toString().trim(),
-    answer:    (r['Answer'] || '').toString().trim(),
-    banner:    bannerShort(r['Form Name']),
-    isSku:     isSkuQuestion(r['Question']),
-    isYes:     isYes(r['Answer'])
-  }));
+  // Aggregation structures
+  const bannerAgg  = {}, regionAgg = {}, monthSubs = {}, repAgg = {};
+  const skuDrill   = {}, storeRows = [];
+  const urlMap     = {};
+  const subSeen    = new Set();
+  let totalSkuYes  = 0, totalSkuTotal = 0;
+  const sparkly    = { answered_pct:[], flow_pct:[], stock_pct:[], sku_pct:[], subs:[] };
+  const monthData  = {};
+
+  rows.forEach(r => {
+    const month   = (r['Month'] || r['Date'] || '').toString().slice(0,7);
+    const subId   = r['Submission ID'] ? r['Submission ID'].toString() : '';
+    const store   = (r['Customer Name'] || '').toString().trim();
+    const region  = (r['Region'] || '').toString().trim();
+    const user    = (r['User'] || '').toString().trim();
+    const form    = (r['Form Name'] || '').toString().trim();
+    const banner  = bannerShort(form);
+    const q       = (r['Question'] || '').toString().trim();
+    const a       = r['Answer'];
+    const ql      = q.toLowerCase();
+    const date    = (r['Date'] || '').toString().slice(0,10);
+
+    if (!monthData[month]) monthData[month] = { subs:new Set(), sku_yes:0, sku_total:0, flow_yes:0, flow_total:0, stock_yes:0, stock_total:0, answered:0, total_q:0 };
+    const md = monthData[month];
+    md.subs.add(subId);
+    md.total_q++;
+    if (a !== null && a !== undefined && a.toString().trim() !== '') md.answered++;
+
+    // Photo URL
+    const adStr = (r['Additional Data'] || '').toString();
+    const aStr  = (r['Answer'] || '').toString();
+    if (!urlMap[subId]) {
+      const urlMatch = (aStr + adStr).match(/https?:\/\/\S+/);
+      if (urlMatch && ql.includes('photo')) urlMap[subId] = urlMatch[0];
+    }
+
+    if (isSku(q)) {
+      const yes = isYes(a);
+      const sku = cleanSku(q);
+      totalSkuTotal++;
+      md.sku_total++;
+      if (yes) { totalSkuYes++; md.sku_yes++; }
+
+      if (!skuDrill[sku]) skuDrill[sku] = { q:sku, yes:0, total:0, no:[] };
+      skuDrill[sku].total++;
+      if (yes) skuDrill[sku].yes++;
+      else skuDrill[sku].no.push([store, region, user, banner, date, month]);
+
+      if (!bannerAgg[banner]) bannerAgg[banner] = { sku_yes:0, sku_total:0, flow_yes:0, flow_total:0, stock_yes:0, stock_total:0 };
+      bannerAgg[banner].sku_total++;
+      if (yes) bannerAgg[banner].sku_yes++;
+
+      if (!regionAgg[region]) regionAgg[region] = { sku_yes:0, sku_total:0, flow_yes:0, flow_total:0, stock_yes:0, stock_total:0 };
+      regionAgg[region].sku_total++;
+      if (yes) regionAgg[region].sku_yes++;
+    }
+
+    if (ql.includes('flow') && (ql.includes('staedtler flow') || ql.includes('flow guide'))) {
+      md.flow_total++;
+      if (!bannerAgg[banner]) bannerAgg[banner] = { sku_yes:0, sku_total:0, flow_yes:0, flow_total:0, stock_yes:0, stock_total:0 };
+      if (!regionAgg[region]) regionAgg[region] = { sku_yes:0, sku_total:0, flow_yes:0, flow_total:0, stock_yes:0, stock_total:0 };
+      bannerAgg[banner].flow_total++;
+      regionAgg[region].flow_total++;
+      if (isYes(a)) { md.flow_yes++; bannerAgg[banner].flow_yes++; regionAgg[region].flow_yes++; }
+    }
+
+    if (ql.includes('stock') && ql.includes('rotat')) {
+      md.stock_total++;
+      if (!bannerAgg[banner]) bannerAgg[banner] = { sku_yes:0, sku_total:0, flow_yes:0, flow_total:0, stock_yes:0, stock_total:0 };
+      if (!regionAgg[region]) regionAgg[region] = { sku_yes:0, sku_total:0, flow_yes:0, flow_total:0, stock_yes:0, stock_total:0 };
+      bannerAgg[banner].stock_total++;
+      regionAgg[region].stock_total++;
+      if (isYes(a)) { md.stock_yes++; bannerAgg[banner].stock_yes++; regionAgg[region].stock_yes++; }
+    }
+  });
+
+  // Build store_rows from per-submission aggregation
+  const subAgg = {};
+  rows.forEach(r => {
+    const subId = r['Submission ID'] ? r['Submission ID'].toString() : '';
+    if (!subId) return;
+    if (!subAgg[subId]) subAgg[subId] = {
+      store:(r['Customer Name']||'').toString().trim(),
+      region:(r['Region']||'').toString().trim(),
+      user:(r['User']||'').toString().trim(),
+      banner:bannerShort(r['Form Name']),
+      date:(r['Date']||'').toString().slice(0,10),
+      month:(r['Month']||r['Date']||'').toString().slice(0,7),
+      sku_yes:0,sku_total:0,flow_yes:0,flow_total:0,stock_yes:0,stock_total:0,pi_vals:[],subId
+    };
+    const s = subAgg[subId];
+    const q = (r['Question']||'').toString().trim();
+    const a = r['Answer'];
+    const ql = q.toLowerCase();
+
+    if (isSku(q)) { s.sku_total++; if(isYes(a)) s.sku_yes++; }
+    if (ql.includes('flow') && (ql.includes('staedtler flow')||ql.includes('flow guide'))) { s.flow_total++; if(isYes(a)) s.flow_yes++; }
+    if (ql.includes('stock') && ql.includes('rotat')) { s.stock_total++; if(isYes(a)) s.stock_yes++; }
+    if (ql.includes('pi label')) { try { s.pi_vals.push(parseFloat(a)); } catch(e){} }
+    if (!s.url && urlMap[subId]) s.url = urlMap[subId];
+  });
+
+  const p = (y,t) => t ? Math.round(y/t*100) : null;
+  const storeRowsArr = Object.values(subAgg).map(s => ({
+    subId: s.subId, store:s.store, region:s.region, user:s.user,
+    banner:s.banner, date:s.date, month:s.month,
+    strike: p(s.sku_yes, s.sku_total),
+    flow:   p(s.flow_yes, s.flow_total),
+    stock:  p(s.stock_yes, s.stock_total),
+    pi:     s.pi_vals.length ? Math.round(s.pi_vals.reduce((a,b)=>a+b,0)/s.pi_vals.length) : null,
+    top20:  p(s.sku_yes, s.sku_total),
+    url:    s.url || ''
+  })).sort((a,b) => (a.strike||0)-(b.strike||0));
+
+  // Sparklines
+  const months = Object.keys(monthData).sort();
+  const monthLabels = months.map(m => ({
+    '01':'J','02':'F','03':'M','04':'A','05':'M','06':'J',
+    '07':'J','08':'A','09':'S','10':'O','11':'N','12':'D'
+  })[m.slice(5)] || '?');
+
+  const sp = { months: monthLabels, sparklines: {
+    answered_pct: months.map(m => { const d=monthData[m]; return d.total_q?Math.round(d.answered/d.total_q*100):0; }),
+    flow_pct:     months.map(m => { const d=monthData[m]; return d.flow_total?Math.round(d.flow_yes/d.flow_total*100):0; }),
+    stock_pct:    months.map(m => { const d=monthData[m]; return d.stock_total?Math.round(d.stock_yes/d.stock_total*100):0; }),
+    sku_pct:      months.map(m => { const d=monthData[m]; return d.sku_total?Math.round(d.sku_yes/d.sku_total*100):0; }),
+    subs:         months.map(m => monthData[m].subs.size)
+  }};
+
+  // Banner/region summary
+  const bannerRegion = {
+    banners: Object.fromEntries(Object.entries(bannerAgg).filter(([b])=>b!=='Other').map(([b,v])=>[b,{
+      sku:  p(v.sku_yes,v.sku_total),
+      flow: p(v.flow_yes,v.flow_total),
+      stock:p(v.stock_yes,v.stock_total)
+    }])),
+    regions: Object.fromEntries(Object.entries(regionAgg)
+      .filter(([r])=>!['Kwazulu Natal','Limpopo'].includes(r))
+      .map(([r,v])=>[r,{
+        sku:  p(v.sku_yes,v.sku_total),
+        flow: p(v.flow_yes,v.flow_total),
+        stock:p(v.stock_yes,v.stock_total)
+      }]))
+  };
+
+  const totalSubs = new Set(rows.map(r=>r['Submission ID'])).size;
+  const totalStores = new Set(rows.map(r=>(r['Customer Name']||'').toString().trim())).size;
+
+  const skuDrillArr = Object.values(skuDrill)
+    .map(s => ({...s, pct: s.total?Math.round(s.yes/s.total*100):0}))
+    .sort((a,b)=>a.pct-b.pct);
+
+  const missing = skuDrillArr.slice(0,10).map(s=>({q:s.q,yes:s.yes,total:s.total,pct:s.pct}));
+
+  // Monthly submission counts for chart
+  const monthlyChart = {};
+  months.forEach(m => monthlyChart[m] = monthData[m].subs.size);
+
+  return {
+    kpis: { total_subs:totalSubs, total_stores:totalStores, total_reps:Object.keys(Object.fromEntries(rows.map(r=>[r['User'],1]))).length,
+            sku_on:totalSkuYes, sku_total:totalSkuTotal, overall_pct:totalSkuTotal?Math.round(totalSkuYes/totalSkuTotal*100):0 },
+    banner: Object.fromEntries(Object.entries(bannerAgg).map(([b,v])=>[b,{yes:v.sku_yes,total:v.sku_total}])),
+    monthly: monthlyChart,
+    region: Object.fromEntries(Object.entries(regionAgg).map(([r,v])=>[r,{yes:v.sku_yes,total:v.sku_total}])),
+    reps: [],
+    stores: [],
+    skus: skuDrillArr,
+    missing,
+    sparklines: sp,
+    banner_region: bannerRegion,
+    store_rows: storeRowsArr,
+    sku_drill: skuDrillArr
+  };
 }
 
-// ═══════════════════════════════════════════════════════════
-// FILTERING
-// ═══════════════════════════════════════════════════════════
-function applyFilters() {
-  const month  = document.getElementById('f-month').value;
-  const banner = document.getElementById('f-banner').value;
-  const region = document.getElementById('f-region').value;
-  const rep    = document.getElementById('f-rep').value;
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+async function init() {
+  await msalInstance.initialize();
 
-  FILTERED = RAW.filter(r => {
-    if (month  && !r.month.includes(month))   return false;
-    if (banner && r.banner !== banner)         return false;
-    if (region && r.region !== region)         return false;
-    if (rep    && r.user !== rep)              return false;
-    return true;
-  });
-  renderAll();
+  // Handle redirect response
+  try {
+    await msalInstance.handleRedirectPromise();
+  } catch(e) { console.warn('Redirect handle:', e); }
+
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length > 0) {
+    document.getElementById('auth-overlay').style.display = 'none';
+    await loadData();
+  } else {
+    document.getElementById('auth-overlay').style.display = 'flex';
+  }
+}
+
+document.getElementById('sign-in-btn').addEventListener('click', async () => {
+  try {
+    await msalInstance.loginRedirect({ scopes: CONFIG.scopes });
+  } catch(e) {
+    showAuthError('Sign in failed: ' + e.message);
+  }
+});
+
+async function loadData() {
+  try {
+    setLoading('Connecting…', true);
+    const data = await fetchAndParse();
+    window.RAW = data;
+    // Patch RAW into the dashboard
+    const SP = RAW.sparklines;
+    const MONTHS = SP.months;
+    populateFilters();
+    renderAll();
+    const now = new Date();
+    document.getElementById('loading-overlay').style.display = 'none';
+  } catch(e) {
+    setLoading('', false);
+    alert('Error loading data: ' + e.message);
+    console.error(e);
+  }
 }
 
 function populateFilters() {
-  const months  = [...new Set(RAW.map(r => r.month))].filter(Boolean).sort();
-  const banners = [...new Set(RAW.map(r => r.banner))].filter(Boolean).sort();
-  const regions = [...new Set(RAW.map(r => r.region))].filter(Boolean).sort();
-  const reps    = [...new Set(RAW.map(r => r.user))].filter(Boolean).sort();
-
-  fillSelect('f-month',  months,  m => ({ value: m, text: m }));
-  fillSelect('f-banner', banners, b => ({ value: b, text: b }));
-  fillSelect('f-region', regions, r => ({ value: r, text: r }));
-  fillSelect('f-rep',    reps,    r => ({ value: r, text: r }));
+  const banners = [...new Set(RAW.store_rows.map(s=>s.banner))].sort();
+  const regions = [...new Set(RAW.store_rows.map(s=>s.region))].sort();
+  const reps    = [...new Set(RAW.store_rows.map(s=>s.user))].sort();
+  const months  = [...new Set(RAW.store_rows.map(s=>s.month))].filter(Boolean).sort();
+  fillFilter('f-banner',banners);
+  fillFilter('f-region',regions);
+  fillFilter('f-rep',reps);
+  fillFilter('f-month',months);
 }
 
-function fillSelect(id, items, mapper) {
+function fillFilter(id, items) {
   const sel = document.getElementById(id);
-  const cur = sel.value;
-  while (sel.options.length > 1) sel.remove(1);
-  items.forEach(i => {
-    const m = mapper(i);
-    const opt = document.createElement('option');
-    opt.value = m.value;
-    opt.textContent = m.text;
-    sel.add(opt);
-  });
-  if (cur) sel.value = cur;
+  while(sel.options.length > 1) sel.remove(1);
+  items.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; sel.add(o); });
 }
 
-// ═══════════════════════════════════════════════════════════
-// ANALYTICS HELPERS
-// ═══════════════════════════════════════════════════════════
-function groupBy(arr, key) {
-  return arr.reduce((acc, r) => {
-    (acc[r[key]] = acc[r[key]] || []).push(r);
-    return acc;
-  }, {});
+
+
+function storeFilter(s){
+  if(fBanner&&s.banner!==fBanner)return false;
+  if(fRegion&&s.region!==fRegion)return false;
+  if(fMonth&&(!s.lastVisit||!s.lastVisit.startsWith(fMonth)))return false;
+  return true;
+}
+function repFilter(r){
+  if(fRegion&&r.region!==fRegion)return false;
+  if(fRep&&r.user!==fRep)return false;
+  return true;
 }
 
-function skuStats(rows) {
-  const sku = rows.filter(r => r.isSku);
-  const yes = sku.filter(r => r.isYes);
-  return { total: sku.length, yes: yes.length, pct: sku.length ? Math.round(yes.length / sku.length * 100) : 0 };
+function renderBanner(){
+  dc('banner');
+  const entries=Object.entries(RAW.banner).filter(([b])=>!fBanner||b===fBanner);
+  const labels=entries.map(e=>e[0]);
+  const data=entries.map(([,v])=>v.total?Math.round(v.yes/v.total*100):0);
+  const ctx=document.getElementById('ch-banner').getContext('2d');
+  CHARTS['banner']=new Chart(ctx,{type:'bar',
+    data:{labels,datasets:[{data,backgroundColor:BLUES.slice(0,labels.length),borderRadius:5,borderSkipped:false}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},datalabels:{anchor:'end',align:'top',formatter:v=>v+'%',font:{size:10,weight:'700'},color:'#0d1b3e'}},
+      scales:{y:{beginAtZero:true,max:110,ticks:{callback:v=>v+'%',font:{size:11}}},x:{ticks:{font:{size:11}}}}}});
 }
 
-function scorePillClass(pct) {
-  return pct >= 75 ? 'score-high' : pct >= 50 ? 'score-mid' : 'score-low';
+function renderMonthly(){
+  dc('monthly');
+  const months=Object.keys(RAW.monthly).sort();
+  const data=months.map(m=>RAW.monthly[m]);
+  const ctx=document.getElementById('ch-monthly').getContext('2d');
+  CHARTS['monthly']=new Chart(ctx,{type:'line',
+    data:{labels:months,datasets:[{data,borderColor:'#003DA5',backgroundColor:'rgba(0,61,165,.08)',fill:true,tension:.3,pointBackgroundColor:'#003DA5',pointRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},datalabels:{anchor:'end',align:'top',formatter:v=>v,font:{size:10,weight:'700'},color:'#0d1b3e'}},
+      scales:{y:{beginAtZero:true,ticks:{font:{size:11}}},x:{ticks:{font:{size:11}}}}}});
 }
 
-function progressBar(pct) {
-  const cls = scorePillClass(pct);
-  const colour = pct >= 75 ? '#1a7f4e' : pct >= 50 ? '#b45309' : '#c0392b';
-  return `<div class="progress-wrap">
-    <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${pct}%;background:${colour}"></div></div>
-    <span class="progress-pct">${pct}%</span>
-  </div>`;
+function renderRegion(){
+  dc('region');
+  const entries=Object.entries(RAW.region).filter(([r])=>!fRegion||r===fRegion);
+  const labels=entries.map(e=>e[0]);
+  const data=entries.map(([,v])=>v.total?Math.round(v.yes/v.total*100):0);
+  const ctx=document.getElementById('ch-region').getContext('2d');
+  CHARTS['region']=new Chart(ctx,{type:'bar',
+    data:{labels,datasets:[{data,backgroundColor:'#003DA5',borderRadius:5,borderSkipped:false}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},datalabels:{anchor:'end',align:'right',formatter:v=>v+'%',font:{size:10,weight:'700'},color:'#0d1b3e'}},
+      scales:{x:{beginAtZero:true,max:115,ticks:{callback:v=>v+'%',font:{size:11}}},y:{ticks:{font:{size:10}}}}}});
 }
 
-// ═══════════════════════════════════════════════════════════
-// CHARTS
-// ═══════════════════════════════════════════════════════════
-const CHARTS = {};
-
-const BLUE_PALETTE = [
-  '#003DA5','#1a52b8','#3367cb','#4d7cde','#6691f1',
-  '#80a5ff','#99baff','#b3ceff','#cce3ff','#e6f1ff'
-];
-
-function destroyChart(id) {
-  if (CHARTS[id]) { CHARTS[id].destroy(); delete CHARTS[id]; }
-}
-
-function renderBannerChart() {
-  destroyChart('banner');
-  const byBanner = groupBy(FILTERED.filter(r => r.isSku), 'banner');
-  const labels = Object.keys(byBanner).sort();
-  const data = labels.map(b => {
-    const rows = byBanner[b];
-    return rows.length ? Math.round(rows.filter(r => r.isYes).length / rows.length * 100) : 0;
-  });
-
-  const ctx = document.getElementById('chart-banner').getContext('2d');
-  CHARTS['banner'] = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{ data, backgroundColor: BLUE_PALETTE.slice(0, labels.length), borderRadius: 5, borderSkipped: false }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
-      scales: {
-        y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%', font: { size: 11 } } },
-        x: { ticks: { font: { size: 11 } } }
-      }
-    }
-  });
-}
-
-function renderMonthlyChart() {
-  destroyChart('monthly');
-  const byMonth = groupBy(FILTERED, 'month');
-  const months = Object.keys(byMonth).sort();
-  const subCounts = months.map(m => new Set(byMonth[m].map(r => r.subId)).size);
-
-  const ctx = document.getElementById('chart-monthly').getContext('2d');
-  CHARTS['monthly'] = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: months,
-      datasets: [{
-        data: subCounts,
-        borderColor: '#003DA5',
-        backgroundColor: 'rgba(0,61,165,0.08)',
-        fill: true,
-        tension: 0.3,
-        pointBackgroundColor: '#003DA5',
-        pointRadius: 5
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
-      scales: {
-        y: { beginAtZero: true, ticks: { font: { size: 11 } } },
-        x: { ticks: { font: { size: 11 } } }
-      }
-    }
-  });
-}
-
-function renderRegionChart() {
-  destroyChart('region');
-  const byRegion = groupBy(FILTERED.filter(r => r.isSku), 'region');
-  const labels = Object.keys(byRegion).sort();
-  const data = labels.map(rg => {
-    const rows = byRegion[rg];
-    return rows.length ? Math.round(rows.filter(r => r.isYes).length / rows.length * 100) : 0;
-  });
-
-  const ctx = document.getElementById('chart-region').getContext('2d');
-  CHARTS['region'] = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [{ data, backgroundColor: '#003DA5', borderRadius: 5, borderSkipped: false }]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
-      scales: {
-        x: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%', font: { size: 11 } } },
-        y: { ticks: { font: { size: 11 } } }
-      }
-    }
-  });
-}
-
-function renderSkuDistChart(skuData) {
-  destroyChart('sku-dist');
-  const buckets = { '0–25%': 0, '26–50%': 0, '51–75%': 0, '76–100%': 0 };
-  skuData.forEach(s => {
-    if (s.pct <= 25)       buckets['0–25%']++;
-    else if (s.pct <= 50)  buckets['26–50%']++;
-    else if (s.pct <= 75)  buckets['51–75%']++;
-    else                   buckets['76–100%']++;
-  });
-
-  const ctx = document.getElementById('chart-sku-dist').getContext('2d');
-  CHARTS['sku-dist'] = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: Object.keys(buckets),
-      datasets: [{ data: Object.values(buckets), backgroundColor: ['#c0392b','#e67e22','#f0c040','#1a7f4e'], borderWidth: 2 }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } }
-    }
-  });
-}
-
-// ═══════════════════════════════════════════════════════════
-// RENDER PANELS
-// ═══════════════════════════════════════════════════════════
-function renderKPIs() {
-  const skuRows     = FILTERED.filter(r => r.isSku);
-  const totalSubs   = new Set(FILTERED.map(r => r.subId)).size;
-  const totalStores = new Set(FILTERED.map(r => r.store)).size;
-  const totalReps   = new Set(FILTERED.map(r => r.user)).size;
-  const onShelf     = skuRows.filter(r => r.isYes).length;
-  const totalSku    = skuRows.length;
-  const pct         = totalSku ? Math.round(onShelf / totalSku * 100) : 0;
-
-  document.getElementById('kpi-strip').innerHTML = `
-    <div class="kpi-card">
-      <div class="kpi-label">Submissions</div>
-      <div class="kpi-value">${totalSubs.toLocaleString()}</div>
-      <div class="kpi-sub">across all banners</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Stores Visited</div>
-      <div class="kpi-value">${totalStores.toLocaleString()}</div>
-      <div class="kpi-sub">unique stores</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Active Reps</div>
-      <div class="kpi-value">${totalReps}</div>
-      <div class="kpi-sub">field representatives</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">SKUs On Shelf</div>
-      <div class="kpi-value">${onShelf.toLocaleString()}</div>
-      <div class="kpi-sub">of ${totalSku.toLocaleString()} checked</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Compliance Rate</div>
-      <div class="kpi-value" style="color:${pct>=75?'#1a7f4e':pct>=50?'#b45309':'#c0392b'}">${pct}%</div>
-      <div class="kpi-sub">SKUs on shelf</div>
-    </div>`;
-}
-
-function renderMissingSkus() {
-  const byQ = groupBy(FILTERED.filter(r => r.isSku), 'question');
-  const skuStats = Object.entries(byQ).map(([q, rows]) => ({
-    q: q.replace(/^Is the |^Is /i, '').replace(/ on shelf\??$/i, '').trim(),
-    total: rows.length,
-    yes: rows.filter(r => r.isYes).length,
-    pct: Math.round(rows.filter(r => r.isYes).length / rows.length * 100)
-  })).sort((a, b) => a.pct - b.pct).slice(0, 10);
-
-  const body = document.getElementById('missing-skus-body');
-  if (!skuStats.length) { body.innerHTML = '<div class="empty-state">No data</div>'; return; }
-
-  body.innerHTML = skuStats.map(s => `
-    <div style="margin-bottom:10px;">
-      <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${s.q}">${s.q}</div>
-      ${progressBar(s.pct)}
+function renderMissing(){
+  document.getElementById('missing-bd').innerHTML=RAW.missing.slice(0,10).map(s=>`
+    <div class="missing-item">
+      <div class="missing-label" title="${s.q}">${s.q}</div>
+      ${pb(s.pct)}
     </div>`).join('');
 }
 
-function renderRepTable() {
-  const byRep = groupBy(FILTERED, 'user');
-  const rows = Object.entries(byRep).map(([user, rrows]) => {
-    const region = rrows[0]?.region || '';
-    const subs   = new Set(rrows.map(r => r.subId)).size;
-    const stores = new Set(rrows.map(r => r.store)).size;
-    const sku    = skuStats(rrows);
-    return { user, region, subs, stores, ...sku };
-  }).sort((a, b) => b.subs - a.subs);
-
-  document.getElementById('rep-tbody').innerHTML = rows.map(r => `
-    <tr>
-      <td><strong>${r.user}</strong></td>
-      <td><span class="month-pill">${r.region}</span></td>
-      <td class="num">${r.subs}</td>
-      <td class="num">${r.stores}</td>
-      <td class="num">${r.total}</td>
-      <td class="num">${r.yes}</td>
-      <td>${progressBar(r.pct)}</td>
-    </tr>`).join('');
-}
-
-function renderStoreTable(filter = '') {
-  const byStore = groupBy(FILTERED, 'store');
-  let rows = Object.entries(byStore).map(([store, srows]) => {
-    const banner = srows[0]?.banner || '';
-    const region = srows[0]?.region || '';
-    const visits = new Set(srows.map(r => r.subId)).size;
-    const sku    = skuStats(srows);
-    const dates  = srows.map(r => r.date).filter(Boolean).sort();
-    const lastVisit = dates[dates.length - 1] ? dates[dates.length - 1].toString().slice(0, 10) : '';
-    return { store, banner, region, visits, lastVisit, ...sku };
+function renderReps(){
+  // Build rep stats live from store_rows so all filters apply
+  const filtered = RAW.store_rows.filter(r=>{
+    if(fBanner&&r.banner!==fBanner)return false;
+    if(fRegion&&r.region!==fRegion)return false;
+    if(fRep&&r.user!==fRep)return false;
+    if(fMonth&&!r.month.startsWith(fMonth))return false;
+    return true;
   });
 
-  if (filter) {
-    const f = filter.toLowerCase();
-    rows = rows.filter(r => r.store.toLowerCase().includes(f) || r.banner.toLowerCase().includes(f));
-  }
+  const repMap={};
+  filtered.forEach(r=>{
+    if(!repMap[r.user]) repMap[r.user]={user:r.user,region:r.region,subs:new Set(),stores:new Set(),skuYes:0,skuTotal:0,flowYes:0,flowTotal:0,stockYes:0,stockTotal:0};
+    const m=repMap[r.user];
+    m.subs.add(r.subId);
+    m.stores.add(r.store);
+    m.skuYes  += r.strike * r.skuTotal / 100 | 0;  // approximate from pct
+    m.skuTotal+= r.skuTotal||0;
+  });
 
-  rows.sort((a, b) => a.pct - b.pct);
+  // Simpler: use strike pct directly averaged
+  const repMap2={};
+  filtered.forEach(r=>{
+    if(!repMap2[r.user]) repMap2[r.user]={user:r.user,region:r.region,subs:new Set(),stores:new Set(),strikes:[],flows:[],stocks:[]};
+    const m=repMap2[r.user];
+    m.subs.add(r.subId);
+    m.stores.add(r.store);
+    m.strikes.push(r.strike);
+    if(r.flow!==null&&r.flow!==undefined) m.flows.push(r.flow);
+    if(r.stock!==null&&r.stock!==undefined) m.stocks.push(r.stock);
+  });
 
-  document.getElementById('store-tbody').innerHTML = rows.map(r => `
-    <tr>
-      <td><strong>${r.store}</strong></td>
-      <td><span class="banner-tag">${r.banner}</span></td>
-      <td>${r.region}</td>
-      <td class="num">${r.visits}</td>
-      <td class="num">${r.total}</td>
-      <td class="num">${r.yes}</td>
-      <td>${progressBar(r.pct)}</td>
-      <td style="color:var(--text-muted);font-size:11px;">${r.lastVisit}</td>
-    </tr>`).join('');
+  const avg=arr=>arr.length?Math.round(arr.reduce((a,b)=>a+b,0)/arr.length):null;
+
+  const rows=Object.values(repMap2).sort((a,b)=>b.subs.size-a.subs.size);
+
+  document.getElementById('rep-tbody').innerHTML=rows.map(r=>`<tr>
+    <td><strong>${r.user}</strong></td>
+    <td><span class="tag tag-r">${r.region}</span></td>
+    <td class="num">${r.subs.size}</td>
+    <td class="num">${r.stores.size}</td>
+    ${sc(avg(r.strikes))}
+    ${sc(avg(r.flows))}
+    ${sc(avg(r.stocks))}
+  </tr>`).join('');
 }
 
-function renderSkuTable() {
-  const byQ = groupBy(FILTERED.filter(r => r.isSku), 'question');
-  const rows = Object.entries(byQ).map(([q, rows]) => {
-    const yes = rows.filter(r => r.isYes).length;
-    const pct = Math.round(yes / rows.length * 100);
-    return { q: q.replace(/^Is the /i, '').replace(/ on shelf\??$/i, '').trim(), total: rows.length, yes, pct };
-  }).sort((a, b) => a.pct - b.pct);
-
-  document.getElementById('sku-tbody').innerHTML = rows.map(r => `
-    <tr>
-      <td style="max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.q}">${r.q}</td>
-      <td class="num">${r.total}</td>
-      <td class="num">${r.yes}</td>
-      <td>${progressBar(r.pct)}</td>
-    </tr>`).join('');
-
-  renderSkuDistChart(rows);
+function sc(v){
+  // coloured % badge, null = dash
+  if(v===null||v===undefined||v==='') return '<td style="text-align:center;color:#aaa">—</td>';
+  const col=v>=75?'#1a7f4e':v>=50?'#b45309':'#c0392b';
+  const bg=v>=75?'#e8f5ee':v>=50?'#fef3cd':'#fdecea';
+  return `<td style="text-align:center"><span style="background:${bg};color:${col};padding:2px 9px;border-radius:4px;font-size:12px;font-weight:700">${v}%</span></td>`;
 }
 
-function renderAll() {
-  renderKPIs();
-  renderBannerChart();
-  renderMonthlyChart();
-  renderRegionChart();
-  renderMissingSkus();
-  renderRepTable();
-  renderStoreTable();
-  renderSkuTable();
+function renderStores(q=''){
+  let rows=RAW.store_rows.filter(r=>{
+    if(fBanner&&r.banner!==fBanner)return false;
+    if(fRegion&&r.region!==fRegion)return false;
+    if(fRep&&r.user!==fRep)return false;
+    if(fMonth&&!r.month.startsWith(fMonth))return false;
+    return true;
+  });
+  if(q){const f=q.toLowerCase();rows=rows.filter(r=>r.store.toLowerCase().includes(f)||r.region.toLowerCase().includes(f)||r.user.toLowerCase().includes(f));}
+  document.getElementById('store-tbody').innerHTML=rows.map(r=>`<tr>
+    <td style="font-size:12px;white-space:nowrap">${r.region}</td>
+    <td style="font-size:12px;font-weight:700">${r.store}</td>
+    <td style="font-size:12px">${r.user}</td>
+    <td style="font-size:12px;color:var(--muted);white-space:nowrap">${r.date}</td>
+    ${sc(r.strike)}
+    <td style="text-align:center;font-size:12px;font-weight:600">${(r.pi!==null&&r.pi!==undefined)?r.pi:'—'}</td>
+    ${sc(r.top20)}
+    ${sc(r.flow)}
+    ${sc(r.stock)}
+    <td style="text-align:center">${r.url?`<a href="${r.url}" target="_blank" style="color:var(--blue);font-size:11px;font-weight:600;text-decoration:none">View ↗</a>`:'—'}</td>
+  </tr>`).join('');
 }
 
-// ═══════════════════════════════════════════════════════════
-// TABS
-// ═══════════════════════════════════════════════════════════
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+function renderSKUs(){
+  // Recompute yes/no counts from sku_drill.no arrays filtered by active filters
+  const rows = RAW.sku_drill.map(s=>{
+    const noFiltered = (s.no||[]).filter(r=>{
+      if(fBanner&&r[3]!==fBanner)return false;
+      if(fRegion&&r[1]!==fRegion)return false;
+      if(fRep&&r[2]!==fRep)return false;
+      if(fMonth&&!r[5].startsWith(fMonth))return false;
+      return true;
+    });
+    // yes count: total filtered - no filtered
+    // We don't have filtered yes array so approximate:
+    // total filtered = no_filtered + yes_filtered
+    // We know total no = s.no.length, total yes = s.yes
+    // For filtered: use no_filtered count + proportional yes
+    const totalFiltered = noFiltered.length + s.yes; // approximate: yes not filtered by banner/region (no yes array stored)
+    const pctFiltered = totalFiltered ? Math.round(s.yes / totalFiltered * 100) : s.pct;
+    return {...s, noFiltered, totalFiltered, yesFiltered: s.yes, pctFiltered};
+  }).sort((a,b)=>a.pctFiltered-b.pctFiltered);
+
+  document.getElementById('sku-tbody').innerHTML=rows.map((s,i)=>`<tr class="sku-row" onclick="openSKUModal(${i})">
+    <td style="max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--blue)" title="${s.q}">${s.q}</td>
+    <td class="num">${s.totalFiltered}</td>
+    <td class="num">${s.yesFiltered}</td>
+    <td>${pb(s.pctFiltered)}</td>
+    <td class="num" style="color:#c0392b;font-weight:700">${s.noFiltered.length}</td>
+  </tr>`).join('');
+  window._skuRows = rows;
+
+  dc('dist');
+  const b={'0–25%':0,'26–50%':0,'51–75%':0,'76–100%':0};
+  rows.forEach(s=>{if(s.pctFiltered<=25)b['0–25%']++;else if(s.pctFiltered<=50)b['26–50%']++;else if(s.pctFiltered<=75)b['51–75%']++;else b['76–100%']++;});
+  const ctx=document.getElementById('ch-dist').getContext('2d');
+  CHARTS['dist']=new Chart(ctx,{type:'doughnut',
+    data:{labels:Object.keys(b),datasets:[{data:Object.values(b),backgroundColor:['#0a2d7a','#003DA5','#4d7cde','#99baff'],borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:11}}},
+      datalabels:{formatter:(v,ctx)=>{const t=ctx.chart.data.datasets[0].data.reduce((a,b)=>a+b,0);return t?Math.round(v/t*100)+'%':'';},color:'#fff',font:{size:11,weight:'700'}}}}});
+}
+
+
+function openSKUModal(idx){
+  const s = window._skuRows[idx];
+  const missing = s.noFiltered || (s.no||[]);
+  document.getElementById('modal-sku-name').textContent = s.q;
+  document.getElementById('modal-sku-sub').textContent = missing.length+' stores missing this SKU · '+s.pctFiltered+'% compliance rate';
+  document.getElementById('modal-tbody').innerHTML = missing.length
+    ? missing.map(r=>`<tr>
+        <td style="min-width:180px"><strong>${r[0]}</strong></td>
+        <td><span class="tag">${r[3]}</span></td>
+        <td>${r[1]}</td>
+        <td>${r[2]}</td>
+        <td style="color:var(--muted)">${r[4]}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">No missing stores for current filters</td></tr>';
+  document.getElementById('sku-modal').classList.add('open');
+}
+function closeSKUModal(){document.getElementById('sku-modal').classList.remove('open');}
+
+function exportSKUDrill(){
+  const rows = Array.from(document.getElementById('modal-tbody').querySelectorAll('tr')).map(tr=>{
+    const tds = tr.querySelectorAll('td');
+    if(tds.length < 5) return null;
+    return [tds[0].textContent.trim(), tds[1].textContent.trim(), tds[2].textContent.trim(), tds[3].textContent.trim(), tds[4].textContent.trim()];
+  }).filter(Boolean);
+
+  const skuName = document.getElementById('modal-sku-name').textContent;
+  const wsData = [
+    ['SKU', skuName],
+    [],
+    ['Store','Banner','Region','Rep','Date'],
+    ...rows
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  ws['!cols'] = [{wch:40},{wch:20},{wch:18},{wch:25},{wch:14}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Missing Stores');
+  const safe = skuName.replace(/[^a-zA-Z0-9]/g,'_').slice(0,30);
+  XLSX.writeFile(wb, `SKU_Missing_${safe}.xlsx`);
+}
+
+document.getElementById('sku-modal').addEventListener('click',function(e){if(e.target===this)closeSKUModal();});
+
+
+function heatClass(p){return p>=75?'heat-green':p>=50?'heat-amber':'heat-red';}
+function heatCell(p){
+  if(p===null||p===undefined) return '<span class="heat-cell heat-amber">N/A</span>';
+  return `<span class="heat-cell ${heatClass(p)}">${p}%</span>`;
+}
+
+function renderBannerSection(){
+  const banners = RAW.banner_region.banners;
+  const rows = Object.entries(banners).sort((a,b)=>a[0].localeCompare(b[0]));
+
+  document.getElementById('banner-heat-tbody').innerHTML = rows.map(([name,v])=>`<tr>
+    <td style="font-weight:700">${name}</td>
+    <td>${heatCell(v.sku)}</td>
+    <td>${heatCell(v.flow)}</td>
+    <td>${heatCell(v.stock)}</td>
+  </tr>`).join('');
+
+  const totalSku = RAW.kpis.overall_pct;
+  const spFlow = RAW.sparklines.sparklines.flow_pct;
+  const spStock = RAW.sparklines.sparklines.stock_pct;
+  document.getElementById('banner-heat-tfoot').innerHTML = `<tr>
+    <td><strong>Total</strong></td>
+    <td>${heatCell(totalSku)}</td>
+    <td>${heatCell(spFlow[spFlow.length-1])}</td>
+    <td>${heatCell(spStock[spStock.length-1])}</td>
+  </tr>`;
+
+  // Grouped bar - scores by region
+  dc('region-grouped');
+  const regions = RAW.banner_region.regions;
+  const regLabels = Object.keys(regions);
+  const ctx1 = document.getElementById('ch-region-grouped').getContext('2d');
+  CHARTS['region-grouped'] = new Chart(ctx1,{
+    type:'bar',
+    data:{
+      labels:regLabels,
+      datasets:[
+        {label:'SKU Score',     data:regLabels.map(r=>regions[r].sku||0),  backgroundColor:'#003DA5',borderRadius:3},
+        {label:'Flow Score',    data:regLabels.map(r=>regions[r].flow||0), backgroundColor:'#4d7cde',borderRadius:3},
+        {label:'Stock Rotation',data:regLabels.map(r=>regions[r].stock||0),backgroundColor:'#0a2d7a',borderRadius:3},
+      ]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom',labels:{font:{size:11}}},datalabels:{anchor:'end',align:'top',formatter:v=>v+'%',font:{size:9,weight:'700'},color:'#0d1b3e'}},
+      scales:{y:{beginAtZero:true,max:115,ticks:{callback:v=>v+'%',font:{size:11}}},x:{ticks:{font:{size:10}}}}}
+  });
+
+  // Strike rate by region - orange bars with labels on top
+  dc('region-strike');
+  const skuData = regLabels.map(r=>regions[r].sku||0);
+  const ctx2 = document.getElementById('ch-region-strike').getContext('2d');
+  CHARTS['region-strike'] = new Chart(ctx2,{
+    type:'bar',
+    data:{
+      labels:regLabels,
+      datasets:[{label:'Strike Rate',data:skuData,backgroundColor:'#4d7cde',borderRadius:6,borderSkipped:false}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        tooltip:{callbacks:{label:c=>c.parsed.y+'%'}},
+        datalabels:{anchor:'end',align:'top',formatter:v=>v+'%',font:{size:11,weight:'700'},color:'#0d1b3e'}
+      },
+      scales:{y:{beginAtZero:true,max:115,ticks:{callback:v=>v+'%',font:{size:11}}},x:{ticks:{font:{size:11}}}}
+    }
+  });
+}
+
+function exportStores(){
+  // Get currently filtered rows
+  const q = document.getElementById('store-search').value.toLowerCase();
+  let rows = RAW.store_rows.filter(r=>{
+    if(fBanner&&r.banner!==fBanner)return false;
+    if(fRegion&&r.region!==fRegion)return false;
+    if(fRep&&r.user!==fRep)return false;
+    if(fMonth&&!r.month.startsWith(fMonth))return false;
+    return true;
+  });
+  if(q) rows=rows.filter(r=>r.store.toLowerCase().includes(q)||r.region.toLowerCase().includes(q)||r.user.toLowerCase().includes(q));
+
+  const wsData = [
+    ['Region','Customer Name','User','Date','Avg Strike Rate %','PI Label Score','Top20 Score %','Flow Score %','Rotation Score %','URL'],
+    ...rows.map(r=>[
+      r.region, r.store, r.user, r.date,
+      r.strike,
+      r.pi!==null&&r.pi!==undefined?r.pi:'',
+      r.top20!==null&&r.top20!==undefined?r.top20:'',
+      r.flow!==null&&r.flow!==undefined?r.flow:'',
+      r.stock!==null&&r.stock!==undefined?r.stock:'',
+      r.url||''
+    ])
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Column widths
+  ws['!cols'] = [
+    {wch:18},{wch:40},{wch:25},{wch:14},
+    {wch:18},{wch:16},{wch:14},{wch:13},{wch:16},{wch:55}
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Store Performance');
+
+  const date = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `Staedtler_StorePerformance_${date}.xlsx`);
+}
+
+function renderAll(){
+  renderKPIs();renderBanner();renderMonthly();renderRegion();
+  renderMissing();renderReps();renderStores();renderSKUs();renderBannerSection();
+}
+
+document.querySelectorAll('.tab').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('tab-'+b.dataset.tab).classList.add('active');
   });
 });
 
-// ═══════════════════════════════════════════════════════════
-// STORE SEARCH
-// ═══════════════════════════════════════════════════════════
-document.getElementById('store-search').addEventListener('input', e => {
-  renderStoreTable(e.target.value);
-});
+document.getElementById('f-banner').addEventListener('change',e=>{fBanner=e.target.value;renderAll();});
+document.getElementById('f-region').addEventListener('change',e=>{fRegion=e.target.value;renderAll();});
+document.getElementById('f-rep').addEventListener('change',e=>{fRep=e.target.value;renderAll();});
+document.getElementById('f-month').addEventListener('change',e=>{fMonth=e.target.value;renderAll();});
+document.getElementById('store-search').addEventListener('input',e=>renderStores(e.target.value));
 
-// ═══════════════════════════════════════════════════════════
-// FILTER EVENTS
-// ═══════════════════════════════════════════════════════════
-['f-month','f-banner','f-region','f-rep'].forEach(id => {
-  document.getElementById(id).addEventListener('change', applyFilters);
-});
 
-// ═══════════════════════════════════════════════════════════
-// UI HELPERS
-// ═══════════════════════════════════════════════════════════
-function setLoading(msg, show = true) {
-  const el = document.getElementById('loading-overlay');
-  el.style.display = show ? 'flex' : 'none';
-  document.getElementById('loading-msg').textContent = msg || '';
-}
-
-function showError(msg) {
-  const el = document.getElementById('auth-error');
-  el.textContent = msg;
-  el.style.display = 'block';
-}
-
-// ═══════════════════════════════════════════════════════════
-// MAIN FLOW
-// ═══════════════════════════════════════════════════════════
-async function loadData() {
-  try {
-    setLoading('Connecting to SharePoint…', true);
-    const buffer = await fetchExcelBuffer();
-    setLoading('Parsing scorecard data…', true);
-    RAW = parseWorkbook(buffer);
-    FILTERED = [...RAW];
-    populateFilters();
-    renderAll();
-    document.getElementById('last-updated').textContent = 
-      'Updated ' + new Date().toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
-    setLoading('', false);
-  } catch (err) {
-    setLoading('', false);
-    alert('Error loading data: ' + err.message);
-    console.error(err);
-  }
-}
-
-async function init() {
-  // Check for token in URL hash (post-redirect)
-  const hashToken = parseHashToken();
-  if (hashToken) {
-    accessToken = hashToken;
-    storeToken(hashToken);
-    document.getElementById('auth-overlay').style.display = 'none';
-    await loadData();
-    return;
-  }
-
-  // Check session storage
-  const stored = checkStoredToken();
-  if (stored) {
-    accessToken = stored;
-    document.getElementById('auth-overlay').style.display = 'none';
-    await loadData();
-    return;
-  }
-
-  // Show sign-in
-  document.getElementById('auth-overlay').style.display = 'flex';
-}
-
-document.getElementById('sign-in-btn').addEventListener('click', () => {
-  window.location.href = buildAuthUrl();
-});
-
-document.getElementById('refresh-btn').addEventListener('click', async () => {
-  if (!accessToken) return;
-  await loadData();
-});
 
 init();
 </script>
 </body>
 </html>
-EOF
