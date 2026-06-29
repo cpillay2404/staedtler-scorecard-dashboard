@@ -6,7 +6,7 @@
 <title>Staedtler Scorecard Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="https://unpkg.com/@azure/msal-browser@2.38.4/lib/msal-browser.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <style>
@@ -595,6 +595,19 @@ function parseWorkbook(buffer) {
 async function init() {
   await msalInstance.initialize();
 
+  // Wire up sign-in button AFTER MSAL is initialized
+  document.getElementById('sign-in-btn').addEventListener('click', async () => {
+    try {
+      document.getElementById('sign-in-btn').textContent = 'Signing in…';
+      document.getElementById('sign-in-btn').disabled = true;
+      await msalInstance.loginRedirect({ scopes: CONFIG.scopes });
+    } catch(e) {
+      document.getElementById('sign-in-btn').textContent = 'Sign in with Microsoft';
+      document.getElementById('sign-in-btn').disabled = false;
+      showAuthError('Sign in failed: ' + e.message);
+    }
+  });
+
   // Handle redirect response
   try {
     await msalInstance.handleRedirectPromise();
@@ -608,14 +621,6 @@ async function init() {
     document.getElementById('auth-overlay').style.display = 'flex';
   }
 }
-
-document.getElementById('sign-in-btn').addEventListener('click', async () => {
-  try {
-    await msalInstance.loginRedirect({ scopes: CONFIG.scopes });
-  } catch(e) {
-    showAuthError('Sign in failed: ' + e.message);
-  }
-});
 
 async function loadData() {
   try {
@@ -1004,7 +1009,7 @@ document.getElementById('store-search').addEventListener('input',e=>renderStores
 
 
 
-init();
+document.addEventListener("DOMContentLoaded", init);
 </script>
 </body>
 </html>
