@@ -157,6 +157,7 @@
   <label>Region</label><select id="f-region"><option value="">All Regions</option></select>
   <label>Rep</label><select id="f-rep"><option value="">All Reps</option></select>
   <label>Month</label><select id="f-month"><option value="">All Months</option></select>
+  <label>Week</label><select id="f-week"><option value="">All Weeks</option></select>
 </div>
 
 <main>
@@ -309,7 +310,7 @@ const CONFIG = {
 
 const CHARTS={};
 const BLUES=['#003DA5','#1a52b8','#3367cb','#4d7cde','#6691f1','#80a5ff','#99baff','#b3ceff'];
-let fBanner='',fRegion='',fRep='',fMonth='';
+let fBanner='',fRegion='',fRep='',fMonth='',fWeek='';
 
 // ═══════════════════════════════════════════
 // MSAL PKCE
@@ -655,12 +656,13 @@ function populateFilters() {
   fillFilter('f-region',regions);
   fillFilter('f-rep',reps);
   fillFilter('f-month',months);
+  fillFilter('f-week',['1','2','3','4','5'],v=>'Week '+v);
 }
 
-function fillFilter(id, items) {
+function fillFilter(id, items, labelFn) {
   const sel = document.getElementById(id);
   while(sel.options.length > 1) sel.remove(1);
-  items.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; sel.add(o); });
+  items.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=labelFn?labelFn(v):v; sel.add(o); });
 }
 
 
@@ -752,6 +754,7 @@ function storeFilter(s){
   if(fBanner&&s.banner!==fBanner)return false;
   if(fRegion&&s.region!==fRegion)return false;
   if(fMonth&&(!s.lastVisit||!s.lastVisit.startsWith(fMonth)))return false;
+  if(fWeek&&weekOfMonth(s.lastVisit)!==parseInt(fWeek))return false;
   return true;
 }
 function repFilter(r){
@@ -813,6 +816,7 @@ function renderReps(){
     if(fRegion&&r.region!==fRegion)return false;
     if(fRep&&r.user!==fRep)return false;
     if(fMonth&&!r.month.startsWith(fMonth))return false;
+    if(fWeek&&weekOfMonth(r.date)!==parseInt(fWeek))return false;
     return true;
   });
 
@@ -867,6 +871,7 @@ function renderStores(q=''){
     if(fRegion&&r.region!==fRegion)return false;
     if(fRep&&r.user!==fRep)return false;
     if(fMonth&&!r.month.startsWith(fMonth))return false;
+    if(fWeek&&weekOfMonth(r.date)!==parseInt(fWeek))return false;
     return true;
   });
   if(q){const f=q.toLowerCase();rows=rows.filter(r=>r.store.toLowerCase().includes(f)||r.region.toLowerCase().includes(f)||r.user.toLowerCase().includes(f));}
@@ -892,6 +897,7 @@ function renderSKUs(){
       if(fRegion&&r[1]!==fRegion)return false;
       if(fRep&&r[2]!==fRep)return false;
       if(fMonth&&!r[5].startsWith(fMonth))return false;
+      if(fWeek&&weekOfMonth(r[4])!==parseInt(fWeek))return false;
       return true;
     });
     // yes count: total filtered - no filtered
@@ -968,6 +974,18 @@ function exportSKUDrill(){
 document.getElementById('sku-modal').addEventListener('click',function(e){if(e.target===this)closeSKUModal();});
 
 
+
+function weekOfMonth(dateStr){
+  // dateStr format YYYY-MM-DD. Returns 1-based calendar week number within month (Mon-Sun weeks)
+  if(!dateStr) return null;
+  const d = new Date(dateStr);
+  if(isNaN(d)) return null;
+  const day = d.getDate();
+  const dow = (d.getDay()+6)%7; // Mon=0..Sun=6
+  const firstDow = (new Date(d.getFullYear(),d.getMonth(),1).getDay()+6)%7;
+  return Math.ceil((day+firstDow)/7);
+}
+
 function heatClass(p){return p>=75?'heat-green':p>=50?'heat-amber':'heat-red';}
 function heatCell(p){
   if(p===null||p===undefined) return '<span class="heat-cell heat-amber">N/A</span>';
@@ -1043,6 +1061,7 @@ function exportStores(){
     if(fRegion&&r.region!==fRegion)return false;
     if(fRep&&r.user!==fRep)return false;
     if(fMonth&&!r.month.startsWith(fMonth))return false;
+    if(fWeek&&weekOfMonth(r.date)!==parseInt(fWeek))return false;
     return true;
   });
   if(q) rows=rows.filter(r=>r.store.toLowerCase().includes(q)||r.region.toLowerCase().includes(q)||r.user.toLowerCase().includes(q));
@@ -1093,6 +1112,7 @@ document.getElementById('f-banner').addEventListener('change',e=>{fBanner=e.targ
 document.getElementById('f-region').addEventListener('change',e=>{fRegion=e.target.value;renderAll();});
 document.getElementById('f-rep').addEventListener('change',e=>{fRep=e.target.value;renderAll();});
 document.getElementById('f-month').addEventListener('change',e=>{fMonth=e.target.value;renderAll();});
+document.getElementById('f-week').addEventListener('change',e=>{fWeek=e.target.value;renderAll();});
 document.getElementById('store-search').addEventListener('input',e=>renderStores(e.target.value));
 
 
