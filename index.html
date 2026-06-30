@@ -660,6 +660,89 @@ function fillFilter(id, items) {
 
 
 
+function pbColour(p){return p>=75?'#1a52b8':p>=50?'#b45309':'#003DA5';}
+
+function pb(p){
+  const c=pbColour(p);
+  return `<div class="pb"><div class="pb-bg"><div class="pb-fill" style="width:${p}%;background:${c}"></div></div><span class="pb-pct">${p}%</span></div>`;
+}
+
+function dc(id){if(CHARTS[id]){CHARTS[id].destroy();delete CHARTS[id];}}
+
+function sparkColour(kpi){
+  const map={answered_pct:'#1a52b8',flow_pct:'#003DA5',stock_pct:'#1a52b8',sku_pct:'#003DA5',subs:'#003DA5'};
+  return map[kpi]||'#003DA5';
+}
+
+
+function renderKPIs(){
+  const defs=[
+    {key:'answered_pct', label:'% Answered', sub:'store audits', suffix:'%'},
+    {key:'flow_pct',     label:'SOS / Flow',  sub:'flow guide compliance', suffix:'%'},
+    {key:'stock_pct',    label:'Stock Rotation', sub:'stock rotation compliance', suffix:'%'},
+    {key:'sku_pct',      label:'SKU Compliance', sub:'SKUs on shelf', suffix:'%'},
+    {key:'subs',         label:'Complete Audits', sub:'total submissions', suffix:''},
+  ];
+
+  document.getElementById('kpi-strip').innerHTML = defs.map((def,i)=>`
+    <div class="kpi" id="kpi-card-${i}">
+      <div class="kpi-label">${def.label}</div>
+      <div class="kpi-value" style="color:${sparkColour(def.key)}" id="kpi-val-${i}"></div>
+      <div class="kpi-sub" id="kpi-sub-${i}"></div>
+      <div class="kpi-spark-wrap">
+        <canvas id="spark-${i}" height="64"></canvas>
+        <div class="trend-badge" id="trend-${i}"></div>
+      </div>
+    </div>`).join('');
+
+  defs.forEach((def,i)=>{
+    const vals = SP.sparklines[def.key];
+    const curr = vals[vals.length-1];
+    const prev = vals[vals.length-2]||curr;
+    const diff = curr - prev;
+    const col  = sparkColour(def.key);
+
+    document.getElementById('kpi-val-'+i).textContent = curr.toLocaleString() + def.suffix;
+    document.getElementById('kpi-sub-'+i).textContent =
+      (def.key==='answered_pct'?RAW.kpis.total_subs.toLocaleString()+' store audits':
+       def.key==='subs'?RAW.kpis.total_subs.toLocaleString()+' total submissions':
+       def.sub);
+
+    const badge = document.getElementById('trend-'+i);
+    if(diff>0){badge.textContent='+'+diff+(def.suffix);badge.className='trend-badge trend-up';}
+    else if(diff<0){badge.textContent=diff+(def.suffix);badge.className='trend-badge trend-down';}
+    else{badge.textContent='0%';badge.className='trend-badge trend-flat';}
+
+    dc('spark-'+i);
+    const ctx = document.getElementById('spark-'+i).getContext('2d');
+    CHARTS['spark-'+i] = new Chart(ctx,{
+      type:'line',
+      data:{
+        labels: MONTHS,
+        datasets:[{
+          data: vals,
+          borderColor: col,
+          backgroundColor: col+'22',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 3,
+          pointBackgroundColor: col,
+          borderWidth: 2
+        }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        layout:{padding:{top:16}},
+        plugins:{legend:{display:false},tooltip:{enabled:false},datalabels:{display:true,anchor:'top',align:'top',formatter:v=>v,font:{size:8,weight:'600'},color:'#4a5568',padding:0}},
+        scales:{x:{display:true,ticks:{font:{size:9},color:'#8a9ab8'},grid:{display:false}},
+                y:{display:false,beginAtZero:false}},
+        animation:{duration:600}
+      }
+    });
+  });
+}
+
+
 function storeFilter(s){
   if(fBanner&&s.banner!==fBanner)return false;
   if(fRegion&&s.region!==fRegion)return false;
