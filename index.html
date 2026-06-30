@@ -362,6 +362,18 @@ async function graphGet(url, token) {
   return res.json();
 }
 
+
+function toDateStr(v){
+  if(v === null || v === undefined || v === '') return '';
+  if(v instanceof Date) return v.toISOString().slice(0,10);
+  // Excel serial number fallback (days since 1899-12-30)
+  if(typeof v === 'number') {
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+    return d.toISOString().slice(0,10);
+  }
+  return v.toString().slice(0,10);
+}
+
 function bannerShort(form) {
   if (!form) return 'Other';
   const f = form.toString().toUpperCase();
@@ -414,7 +426,7 @@ async function fetchAndParse() {
 }
 
 function parseWorkbook(buffer) {
-  const wb = XLSX.read(buffer, { type: 'array' });
+  const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
   const ws = wb.Sheets['Submission Answers'];
   if (!ws) throw new Error('Sheet "Submission Answers" not found');
   const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
@@ -429,7 +441,7 @@ function parseWorkbook(buffer) {
   const monthData  = {};
 
   rows.forEach(r => {
-    const month   = (r['Month'] || r['Date'] || '').toString().slice(0,7);
+    const month   = toDateStr(r['Month'] || r['Date']).slice(0,7);
     const subId   = r['Submission ID'] ? r['Submission ID'].toString() : '';
     const store   = (r['Customer Name'] || '').toString().trim();
     const region  = (r['Region'] || '').toString().trim();
@@ -439,7 +451,7 @@ function parseWorkbook(buffer) {
     const q       = (r['Question'] || '').toString().trim();
     const a       = r['Answer'];
     const ql      = q.toLowerCase();
-    const date    = (r['Date'] || '').toString().slice(0,10);
+    const date    = toDateStr(r['Date']);
 
     if (!monthData[month]) monthData[month] = { subs:new Set(), sku_yes:0, sku_total:0, flow_yes:0, flow_total:0, stock_yes:0, stock_total:0, answered:0, total_q:0 };
     const md = monthData[month];
@@ -505,8 +517,8 @@ function parseWorkbook(buffer) {
       region:(r['Region']||'').toString().trim(),
       user:(r['User']||'').toString().trim(),
       banner:bannerShort(r['Form Name']),
-      date:(r['Date']||'').toString().slice(0,10),
-      month:(r['Month']||r['Date']||'').toString().slice(0,7),
+      date:toDateStr(r['Date']),
+      month:toDateStr(r['Month']||r['Date']).slice(0,7),
       sku_yes:0,sku_total:0,flow_yes:0,flow_total:0,stock_yes:0,stock_total:0,pi_vals:[],subId
     };
     const s = subAgg[subId];
@@ -683,12 +695,21 @@ function sparkColour(kpi){
 
 
 function renderKPIs(){
+  const rows = getFilteredRows();
+  const totalSubs = new Set(rows.map(r=>r.subId)).size;
+  const totalStores = new Set(rows.map(r=>r.store)).size;
+  const skuPct = avgOf(rows,'strike');
+  const flowPct = avgOf(rows,'flow');
+  const stockPct = avgOf(rows,'stock');
+  const answeredVals = rows.map(r=>r.strike).filter(v=>v!==null&&v!==undefined);
+  const answeredPct = answeredVals.length ? 100 : 0; // all rows that have a strike value were answered
+
   const defs=[
-    {key:'answered_pct', label:'% Answered', sub:'store audits', suffix:'%'},
-    {key:'flow_pct',     label:'SOS / Flow',  sub:'flow guide compliance', suffix:'%'},
-    {key:'stock_pct',    label:'Stock Rotation', sub:'stock rotation compliance', suffix:'%'},
-    {key:'sku_pct',      label:'SKU Compliance', sub:'SKUs on shelf', suffix:'%'},
-    {key:'subs',         label:'Complete Audits', sub:'total submissions', suffix:''},
+    {key:'answered_pct', label:'% Answered', sub: totalSubs.toLocaleString()+' store audits', value: rows.length?100:0, suffix:'%'},
+    {key:'flow_pct',     label:'SOS / Flow',  sub:'flow guide compliance', value: flowPct, suffix:'%'},
+    {key:'stock_pct',    label:'Stock Rotation', sub:'stock rotation compliance', value: stockPct, suffix:'%'},
+    {key:'sku_pct',      label:'SKU Compliance', sub:'SKUs on shelf', value: skuPct, suffix:'%'},
+    {key:'subs',         label:'Complete Audits', sub: totalSubs.toLocaleString()+' total submissions', value: totalSubs, suffix:''},
   ];
 
   document.getElementById('kpi-strip').innerHTML = defs.map((def,i)=>`
@@ -703,17 +724,14 @@ function renderKPIs(){
     </div>`).join('');
 
   defs.forEach((def,i)=>{
-    const vals = SP.sparklines[def.key];
-    const curr = vals[vals.length-1];
-    const prev = vals[vals.length-2]||curr;
-    const diff = curr - prev;
+    const vals = SP.sparklines[def.key]; // sparkline always shows full monthly trend regardless of filter
+    const curr = def.value;
+    const prevSpark = vals[vals.length-2]||curr;
+    const diff = curr - prevSpark;
     const col  = sparkColour(def.key);
 
     document.getElementById('kpi-val-'+i).textContent = curr.toLocaleString() + def.suffix;
-    document.getElementById('kpi-sub-'+i).textContent =
-      (def.key==='answered_pct'?RAW.kpis.total_subs.toLocaleString()+' store audits':
-       def.key==='subs'?RAW.kpis.total_subs.toLocaleString()+' total submissions':
-       def.sub);
+    document.getElementById('kpi-sub-'+i).textContent = def.sub;
 
     const badge = document.getElementById('trend-'+i);
     if(diff>0){badge.textContent='+'+diff+(def.suffix);badge.className='trend-badge trend-up';}
@@ -749,7 +767,6 @@ function renderKPIs(){
   });
 }
 
-
 function storeFilter(s){
   if(fBanner&&s.banner!==fBanner)return false;
   if(fRegion&&s.region!==fRegion)return false;
@@ -763,11 +780,29 @@ function repFilter(r){
   return true;
 }
 
+function getFilteredRows(){
+  return RAW.store_rows.filter(r=>{
+    if(fBanner&&r.banner!==fBanner)return false;
+    if(fRegion&&r.region!==fRegion)return false;
+    if(fRep&&r.user!==fRep)return false;
+    if(fMonth&&!r.month.startsWith(fMonth))return false;
+    if(fWeek&&weekOfMonth(r.date)!==parseInt(fWeek))return false;
+    return true;
+  });
+}
+
+function avgOf(rows,field){
+  const vals = rows.map(r=>r[field]).filter(v=>v!==null&&v!==undefined);
+  return vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : 0;
+}
+
 function renderBanner(){
   dc('banner');
-  const entries=Object.entries(RAW.banner).filter(([b])=>!fBanner||b===fBanner);
-  const labels=entries.map(e=>e[0]);
-  const data=entries.map(([,v])=>v.total?Math.round(v.yes/v.total*100):0);
+  const rows = getFilteredRows();
+  const byBanner = {};
+  rows.forEach(r=>{ (byBanner[r.banner]=byBanner[r.banner]||[]).push(r); });
+  const labels = Object.keys(byBanner).sort();
+  const data = labels.map(b=>avgOf(byBanner[b],'strike'));
   const ctx=document.getElementById('ch-banner').getContext('2d');
   CHARTS['banner']=new Chart(ctx,{type:'bar',
     data:{labels,datasets:[{data,backgroundColor:BLUES.slice(0,labels.length),borderRadius:5,borderSkipped:false}]},
@@ -778,8 +813,11 @@ function renderBanner(){
 
 function renderMonthly(){
   dc('monthly');
-  const months=Object.keys(RAW.monthly).sort();
-  const data=months.map(m=>RAW.monthly[m]);
+  const rows = getFilteredRows();
+  const byMonth = {};
+  rows.forEach(r=>{ (byMonth[r.month]=byMonth[r.month]||new Set()).add(r.subId); });
+  const months = Object.keys(byMonth).sort();
+  const data = months.map(m=>byMonth[m].size);
   const ctx=document.getElementById('ch-monthly').getContext('2d');
   CHARTS['monthly']=new Chart(ctx,{type:'line',
     data:{labels:months,datasets:[{data,borderColor:'#003DA5',backgroundColor:'rgba(0,61,165,.08)',fill:true,tension:.3,pointBackgroundColor:'#003DA5',pointRadius:4}]},
@@ -790,9 +828,11 @@ function renderMonthly(){
 
 function renderRegion(){
   dc('region');
-  const entries=Object.entries(RAW.region).filter(([r])=>!fRegion||r===fRegion);
-  const labels=entries.map(e=>e[0]);
-  const data=entries.map(([,v])=>v.total?Math.round(v.yes/v.total*100):0);
+  const rows = getFilteredRows();
+  const byRegion = {};
+  rows.forEach(r=>{ (byRegion[r.region]=byRegion[r.region]||[]).push(r); });
+  const labels = Object.keys(byRegion).sort();
+  const data = labels.map(r=>avgOf(byRegion[r],'strike'));
   const ctx=document.getElementById('ch-region').getContext('2d');
   CHARTS['region']=new Chart(ctx,{type:'bar',
     data:{labels,datasets:[{data,backgroundColor:'#003DA5',borderRadius:5,borderSkipped:false}]},
@@ -802,7 +842,22 @@ function renderRegion(){
 }
 
 function renderMissing(){
-  document.getElementById('missing-bd').innerHTML=RAW.missing.slice(0,10).map(s=>`
+  // Recompute from sku_drill.no filtered by active filters
+  const rows = RAW.sku_drill.map(s=>{
+    const noFiltered = (s.no||[]).filter(r=>{
+      if(fBanner&&r[3]!==fBanner)return false;
+      if(fRegion&&r[1]!==fRegion)return false;
+      if(fRep&&r[2]!==fRep)return false;
+      if(fMonth&&!r[5].startsWith(fMonth))return false;
+      if(fWeek&&weekOfMonth(r[4])!==parseInt(fWeek))return false;
+      return true;
+    });
+    const total = noFiltered.length + s.yes;
+    const pct = total ? Math.round(s.yes/total*100) : s.pct;
+    return {...s, pct};
+  }).sort((a,b)=>a.pct-b.pct).slice(0,10);
+
+  document.getElementById('missing-bd').innerHTML=rows.map(s=>`
     <div class="missing-item">
       <div class="missing-label" title="${s.q}">${s.q}</div>
       ${pb(s.pct)}
@@ -993,39 +1048,42 @@ function heatCell(p){
 }
 
 function renderBannerSection(){
-  const banners = RAW.banner_region.banners;
-  const rows = Object.entries(banners).sort((a,b)=>a[0].localeCompare(b[0]));
+  const rows = getFilteredRows();
+  const byBanner = {};
+  rows.forEach(r=>{ (byBanner[r.banner]=byBanner[r.banner]||[]).push(r); });
+  const bannerNames = Object.keys(byBanner).sort();
 
-  document.getElementById('banner-heat-tbody').innerHTML = rows.map(([name,v])=>`<tr>
-    <td style="font-weight:700">${name}</td>
-    <td>${heatCell(v.sku)}</td>
-    <td>${heatCell(v.flow)}</td>
-    <td>${heatCell(v.stock)}</td>
-  </tr>`).join('');
+  document.getElementById('banner-heat-tbody').innerHTML = bannerNames.map(name=>{
+    const rs = byBanner[name];
+    return `<tr>
+      <td style="font-weight:700">${name}</td>
+      <td>${heatCell(avgOf(rs,'strike'))}</td>
+      <td>${heatCell(avgOf(rs,'flow'))}</td>
+      <td>${heatCell(avgOf(rs,'stock'))}</td>
+    </tr>`;
+  }).join('');
 
-  const totalSku = RAW.kpis.overall_pct;
-  const spFlow = RAW.sparklines.sparklines.flow_pct;
-  const spStock = RAW.sparklines.sparklines.stock_pct;
   document.getElementById('banner-heat-tfoot').innerHTML = `<tr>
     <td><strong>Total</strong></td>
-    <td>${heatCell(totalSku)}</td>
-    <td>${heatCell(spFlow[spFlow.length-1])}</td>
-    <td>${heatCell(spStock[spStock.length-1])}</td>
+    <td>${heatCell(avgOf(rows,'strike'))}</td>
+    <td>${heatCell(avgOf(rows,'flow'))}</td>
+    <td>${heatCell(avgOf(rows,'stock'))}</td>
   </tr>`;
 
-  // Grouped bar - scores by region
+  // Grouped bar - scores by region (live, filtered)
   dc('region-grouped');
-  const regions = RAW.banner_region.regions;
-  const regLabels = Object.keys(regions);
+  const byRegion = {};
+  rows.forEach(r=>{ (byRegion[r.region]=byRegion[r.region]||[]).push(r); });
+  const regLabels = Object.keys(byRegion).sort();
   const ctx1 = document.getElementById('ch-region-grouped').getContext('2d');
   CHARTS['region-grouped'] = new Chart(ctx1,{
     type:'bar',
     data:{
       labels:regLabels,
       datasets:[
-        {label:'SKU Score',     data:regLabels.map(r=>regions[r].sku||0),  backgroundColor:'#003DA5',borderRadius:3},
-        {label:'Flow Score',    data:regLabels.map(r=>regions[r].flow||0), backgroundColor:'#4d7cde',borderRadius:3},
-        {label:'Stock Rotation',data:regLabels.map(r=>regions[r].stock||0),backgroundColor:'#0a2d7a',borderRadius:3},
+        {label:'SKU Score',     data:regLabels.map(r=>avgOf(byRegion[r],'strike')), backgroundColor:'#003DA5',borderRadius:3},
+        {label:'Flow Score',    data:regLabels.map(r=>avgOf(byRegion[r],'flow')),   backgroundColor:'#4d7cde',borderRadius:3},
+        {label:'Stock Rotation',data:regLabels.map(r=>avgOf(byRegion[r],'stock')),  backgroundColor:'#0a2d7a',borderRadius:3},
       ]
     },
     options:{responsive:true,maintainAspectRatio:false,
@@ -1033,9 +1091,9 @@ function renderBannerSection(){
       scales:{y:{beginAtZero:true,max:115,ticks:{callback:v=>v+'%',font:{size:11}}},x:{ticks:{font:{size:10}}}}}
   });
 
-  // Strike rate by region - orange bars with labels on top
+  // Strike rate by region - live, filtered
   dc('region-strike');
-  const skuData = regLabels.map(r=>regions[r].sku||0);
+  const skuData = regLabels.map(r=>avgOf(byRegion[r],'strike'));
   const ctx2 = document.getElementById('ch-region-strike').getContext('2d');
   CHARTS['region-strike'] = new Chart(ctx2,{
     type:'bar',
