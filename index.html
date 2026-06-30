@@ -627,9 +627,10 @@ async function loadData() {
     setLoading('Connecting…', true);
     const data = await fetchAndParse();
     window.RAW = data;
-    // Patch RAW into the dashboard
-    const SP = RAW.sparklines;
-    const MONTHS = SP.months;
+    window.RAW = RAW; // ensure global
+    // Patch RAW into the dashboard - SP/MONTHS must be global since render fns reference them directly
+    window.SP = RAW.sparklines;
+    window.MONTHS = SP.months;
     populateFilters();
     renderAll();
     const now = new Date();
